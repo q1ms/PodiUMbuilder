@@ -6,6 +6,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
+process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -27,7 +29,7 @@ async function connectDB() {
     db = client.db('podium');
     console.log('✅ Connected to MongoDB');
 }
-connectDB().catch(console.error);
+connectDB().catch(err => { console.error('MongoDB connection error:', err); });
 
 // ===== AUTH MIDDLEWARE =====
 function authenticate(req, res, next) {
