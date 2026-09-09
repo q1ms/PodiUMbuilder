@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Podi @ UM — Layout Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        /* (same styles as previous version, keep all) */
+        html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif; }
+        #root { height: 100vh; width: 100vw; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+        .site-name-input { background: transparent; border: none; font-weight: 700; font-size: 1.25rem; color: #1a1a2e; padding: 4px 8px; border-radius: 6px; transition: 0.2s; min-width: 120px; }
+        .site-name-input:hover { background: #f1f5f9; }
+        .site-name-input:focus { outline: 2px solid #0d9488; background: white; }
+        .media-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 300px; overflow-y: auto; }
+        .media-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; font-size: 0.7rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; transition: 0.2s; position: relative; }
+        .media-item:hover { background: #e6fffa; border-color: #0d9488; }
+        .media-item .name { font-weight: 500; color: #1a1a2e; }
+        .media-item .remove-btn { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: #ef4444; color: white; border: none; font-size: 0.6rem; cursor: pointer; opacity: 0; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; line-height: 1; }
+        .media-item:hover .remove-btn { opacity: 1; }
+        .media-item .remove-btn:hover { background: #dc2626; }
+        .sidebar-tabs { display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 12px; width: 100%; }
+        .sidebar-tab { flex: 1; text-align: center; padding: 8px 0; font-size: 0.8rem; font-weight: 500; color: #94a3b8; cursor: pointer; transition: all 0.25s ease; border-bottom: 3px solid transparent; position: relative; }
+        .sidebar-tab.active { color: #0d9488; border-bottom-color: #0d9488; }
+        .sidebar-tab:hover { color: #1a1a2e; }
+        .sidebar-tab-content { animation: fadeSlide 0.3s ease; }
+        @keyframes fadeSlide { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
+        .section-divider { display: flex; align-items: center; gap: 12px; padding: 4px 0; width: 100%; }
+        .section-divider .line { flex: 1; height: 2px; background: #d1d5db; border-radius: 2px; }
+        .section-divider .label-input { font-size: 0.8rem; font-weight: 600; color: #1a1a2e; border: none; background: transparent; padding: 2px 6px; border-radius: 4px; min-width: 60px; text-align: center; }
+        .section-divider .label-input:focus { outline: 2px solid #0d9488; background: white; }
+        .logo-wrapper { display: flex; align-items: center; gap: 8px; }
+        .logo-wrapper img { max-height: 50px; width: auto; object-fit: contain; border-radius: 6px; }
+        .top-btn { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; color: #1a1a2e; height: 32px; }
+        .top-btn:hover { background: #e2e8f0; }
+        .top-btn.danger:hover { background: #fee2e2; color: #cc0000; border-color: #cc0000; }
+        .top-btn-icon { background: transparent; border: none; font-size: 1.1rem; cursor: pointer; padding: 0 4px; color: #64748b; transition: 0.2s; height: 32px; display: flex; align-items: center; }
+        .top-btn-icon:hover { color: #cc0000; }
+        .audio-progress { width: 100%; accent-color: #0d9488; }
+        .audio-volume { width: 80px; accent-color: #0d9488; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // ================================================================
+        // IMPORTS
+        // ================================================================
+        const { useReducer, useState, useRef, useCallback, useEffect, createContext, useContext } = React;
+
+        // ================================================================
+        // ICONS
+        // ================================================================
+        const Icon = ({ paths, size = 24, className = '' }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {paths}
+            </svg>
+        );
+        const Icons = {
+            volume: (p) => <Icon {...p} paths={<><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></>} />,
+            folder: (p) => <Icon {...p} paths={<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.5a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>} />,
+            sliders: (p) => <Icon {...p} paths={<><line x1="21" x2="14" y1="5" y2="5"/><line x1="10" x2="3" y1="5" y2="5"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="19" y2="19"/><line x1="12" x2="3" y1="19" y2="19"/><circle cx="12" cy="5" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="14" cy="19" r="2"/></>} />,
+            flag: (p) => <Icon {...p} paths={<><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></>} />,
+            upload: (p) => <Icon {...p} paths={<><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></>} />,
+            images: (p) => <Icon {...p} paths={<><rect width="16" height="16" x="4" y="4" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m21 15-4.3-4.3a2 2 0 0 0-2.8 0L4 21"/></>} />,
+            trash: (p) => <Icon {...p} paths={<><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></>} />,
+            eye: (p) => <Icon {...p} paths={<><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>} />,
+            up: (p) => <Icon {...p} paths={<><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></>} />,
+            down: (p) => <Icon {...p} paths={<><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></>} />,
+            copy: (p) => <Icon {...p} paths={<><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"/></>} />,
+            reset: (p) => <Icon {...p} paths={<><path d="M3 12a9 9 0 1 0 2.6-6.3L3 8"/><path d="M3 3v5h5"/></>} />,
+            save: (p) => <Icon {...p} paths={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></>} />,
+            pencil: (p) => <Icon {...p} paths={<path d="m17 3 4 4L7.5 20.5 2 22l1.5-5.5Z"/>} />,
+            plus: (p) => <Icon {...p} paths={<><path d="M5 12h14"/><path d="M12 5v14"/></>} />,
+            play: (p) => <Icon {...p} paths={<polygon points="5 3 19 12 5 21 5 3"/>} />,
+            pause: (p) => <Icon {...p} paths={<><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></>} />,
+            cloud: (p) => <Icon {...p} paths={<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>} />,
+            divider: (p) => <Icon {...p} paths={<><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></>} />,
+        };
+
+        // ================================================================
+        // CLOUDINARY CONFIG (user: ulww3nal)
+        // ================================================================
+        const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
+        const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
+
+        // ================================================================
+        // UPLOAD WITH PROGRESS
+        // ================================================================
+        function uploadToCloudinaryWithProgress(file, onProgress) {
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        onProgress(percent);
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            resolve(data.secure_url);
+                        } catch (e) {
+                            reject(new Error('Invalid response'));
+                        }
+                    } else {
+                        reject(new Error('Upload failed: ' + xhr.status));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Network error'));
+                xhr.send(formData);
+            });
+        }
+
+        // ================================================================
+        // AUDIO CONTEXT
+        // ================================================================
+        const AudioContext = createContext(null);
+
+        const AudioProvider = ({ children }) => {
+            const [audioUrl, setAudioUrl] = useState(null);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const [duration, setDuration] = useState(0);
+            const [volume, setVolume] = useState(0.8);
+            const audioRef = useRef(null);
+
+            useEffect(() => {
+                const audio = new Audio();
+                audio.crossOrigin = 'anonymous';
+                audio.preload = 'auto';
+                audioRef.current = audio;
+                const handleTimeUpdate = () => {
+                    if (audio.duration) {
+                        setProgress((audio.currentTime / audio.duration) * 100);
+                    }
+                };
+                const handleLoadedMetadata = () => {
+                    setDuration(audio.duration);
+                };
+                const handleEnded = () => {
+                    setIsPlaying(false);
+                    setProgress(0);
+                };
+                audio.addEventListener('timeupdate', handleTimeUpdate);
+                audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+                audio.addEventListener('ended', handleEnded);
+                return () => {
+                    audio.pause();
+                    audio.src = '';
+                    audio.removeEventListener('timeupdate', handleTimeUpdate);
+                    audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                    audio.removeEventListener('ended', handleEnded);
+                };
+            }, []);
+
+            const play = (url) => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                if (audio.src !== url) {
+                    audio.src = url;
+                    audio.load();
+                }
+                audio.volume = volume;
+                audio.play().then(() => {
+                    setIsPlaying(true);
+                }).catch(() => {});
+                setAudioUrl(url);
+            };
+
+            const pause = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                audio.pause();
+                setIsPlaying(false);
+            };
+
+            const togglePlay = (url) => {
+                if (!url) return;
+                if (audioUrl === url && isPlaying) {
+                    pause();
+                } else {
+                    play(url);
+                }
+            };
+
+            const seek = (value) => {
+                const audio = audioRef.current;
+                if (!audio || !audio.duration) return;
+                audio.currentTime = (value / 100) * audio.duration;
+                setProgress(value);
+            };
+
+            const changeVolume = (val) => {
+                const v = val / 100;
+                setVolume(v);
+                if (audioRef.current) {
+                    audioRef.current.volume = v;
+                }
+            };
+
+            const playBeep = () => {
+                try {
+                    const ctx = new(window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = 880;
+                    osc.type = 'sine';
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.15);
+                } catch (e) {}
+            };
+
+            return (
+                <AudioContext.Provider value={{
+                    audioUrl,
+                    isPlaying,
+                    progress,
+                    duration,
+                    volume,
+                    play,
+                    pause,
+                    togglePlay,
+                    seek,
+                    changeVolume,
+                    playBeep,
+                }}>
+                    {children}
+                </AudioContext.Provider>
+            );
+        };
+
+        // ================================================================
+        // API HELPERS
+        // ================================================================
+        const token = localStorage.getItem('podiumToken');
+        if (!token) {
+            window.location.href = '/dashboard.html';
+        }
+
+        async function apiFetch(endpoint, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token,
+                ...options.headers,
+            };
+            const resp = await fetch(endpoint, { ...options, headers });
+            if (resp.status === 401) {
+                localStorage.removeItem('podiumToken');
+                window.location.href = '/dashboard.html';
+                throw new Error('Unauthorized');
+            }
+            return resp.json();
+        }
+
+        // ================================================================
+        // STATE MANAGEMENT
+        // ================================================================
+        let uid = 0;
+        const nextId = (p = 'blk') => `${p}_${Date.now()}_${uid++}`;
+
+        const BLOCK_META = {
+            SoundButton: { label: 'Sound Button', icon: 'flag' },
+            Playlist: { label: 'Playlist', icon: 'volume' },
+            CustomUploads: { label: 'Custom Uploads', icon: 'upload' },
+            SlidesManager: { label: 'Slides Manager', icon: 'folder' },
+            ProgressControls: { label: 'Progress & Volume', icon: 'sliders' },
+            Divider: { label: 'Divider', icon: 'divider' },
+        };
+
+        const DEFAULT_PROPS = {
+            SoundButton: { label: 'Sound Button', audioUrl: '', color: '#1a1a2e' },
+            Playlist: { title: 'Playlist', tracks: [], color: '#1a1a2e' },
+            CustomUploads: { title: 'Custom Uploads', subtitle: 'Upload audio files from your PC', color: '#1a1a2e' },
+            SlidesManager: { title: 'Slides Manager', subtitle: 'Upload PDF or images', color: '#1a1a2e' },
+            ProgressControls: { title: 'Now Playing / Volume', color: '#1a1a2e' },
+            Divider: { label: 'Divider', color: '#d1d5db' },
+        };
+
+        // Load site from server
+        const params = new URLSearchParams(window.location.search);
+        const siteId = params.get('site');
+
+        const initialState = {
+            siteId: siteId || null,
+            siteName: 'Untitled Site',
+            logoUrl: '',
+            bgColor: '#f8fafc',
+            topBarColor: '#ffffff',
+            media: [],
+            tabs: [{ id: 'main', label: 'Main' }],
+            activeTab: 'main',
+            components: [],
+            selectedId: null,
+            _id: null, // MongoDB id
+        };
+
+        function reducer(state, action) {
+            let newState;
+            switch (action.type) {
+                case 'LOAD': {
+                    const data = action.state;
+                    return {
+                        ...state,
+                        _id: data._id || data.id,
+                        siteId: data._id || data.id,
+                        siteName: data.name || 'Untitled Site',
+                        logoUrl: data.logoUrl || '',
+                        bgColor: data.bgColor || '#f8fafc',
+                        topBarColor: data.topBarColor || '#ffffff',
+                        media: data.media || [],
+                        tabs: data.tabs || [{ id: 'main', label: 'Main' }],
+                        activeTab: data.activeTab || 'main',
+                        components: data.components || [],
+                        selectedId: null,
+                    };
+                }
+                case 'ADD': {
+                    const comp = {
+                        id: nextId(),
+                        type: action.blockType,
+                        tab: state.activeTab,
+                        props: {...DEFAULT_PROPS[action.blockType] },
+                    };
+                    newState = { ...state, components: [...state.components, comp], selectedId: comp.id };
+                    break;
+                }
+                case 'SELECT':
+                    newState = { ...state, selectedId: action.id };
+                    break;
+                case 'SET_ACTIVE_TAB':
+                    newState = { ...state, activeTab: action.tab };
+                    break;
+                case 'ADD_TAB': {
+                    const tab = { id: nextId('tab'), label: action.label };
+                    newState = { ...state, tabs: [...state.tabs, tab], activeTab: tab.id };
+                    break;
+                }
+                case 'RENAME_TAB':
+                    newState = { ...state, tabs: state.tabs.map(t => t.id === action.id ? {...t, label: action.label } : t) };
+                    break;
+                case 'UPDATE_PROPS':
+                    newState = { ...state, components: state.components.map(c => c.id === action.id ? {...c, props: action.props } : c) };
+                    break;
+                case 'SET_TAB':
+                    newState = { ...state, components: state.components.map(c => c.id === action.id ? {...c, tab: action.tab } : c) };
+                    break;
+                case 'DELETE': {
+                    const components = state.components.filter(c => c.id !== action.id);
+                    newState = { ...state, components, selectedId: state.selectedId === action.id ? null : state.selectedId };
+                    break;
+                }
+                case 'DUPLICATE': {
+                    const idx = state.components.findIndex(c => c.id === action.id);
+                    if (idx === -1) return state;
+                    const copy = {...JSON.parse(JSON.stringify(state.components[idx])), id: nextId() };
+                    const components = [...state.components.slice(0, idx + 1), copy, ...state.components.slice(idx + 1)];
+                    newState = { ...state, components, selectedId: copy.id };
+                    break;
+                }
+                case 'MOVE': {
+                    const group = state.components.filter(c => c.tab === action.tab);
+                    const idx = group.findIndex(c => c.id === action.id);
+                    const targetIdx = idx + action.direction;
+                    if (idx === -1 || targetIdx < 0 || targetIdx >= group.length) return state;
+                    const a = group[idx], b = group[targetIdx];
+                    const fullA = state.components.findIndex(c => c.id === a.id);
+                    const fullB = state.components.findIndex(c => c.id === b.id);
+                    const swapped = [...state.components];
+                    [swapped[fullA], swapped[fullB]] = [swapped[fullB], swapped[fullA]];
+                    newState = { ...state, components: swapped };
+                    break;
+                }
+                case 'REORDER': {
+                    const fromIdx = state.components.findIndex(c => c.id === action.fromId);
+                    const toIdx = state.components.findIndex(c => c.id === action.toId);
+                    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return state;
+                    const components = [...state.components];
+                    const [moved] = components.splice(fromIdx, 1);
+                    moved.tab = action.toTab;
+                    components.splice(toIdx, 0, moved);
+                    newState = { ...state, components };
+                    break;
+                }
+                case 'SET_NAME':
+                    newState = { ...state, siteName: action.name };
+                    break;
+                case 'SET_LOGO':
+                    newState = { ...state, logoUrl: action.url };
+                    break;
+                case 'SET_BG_COLOR':
+                    newState = { ...state, bgColor: action.color };
+                    break;
+                case 'SET_TOP_BAR_COLOR':
+                    newState = { ...state, topBarColor: action.color };
+                    break;
+                case 'ADD_MEDIA': {
+                    const media = [...(state.media || []), action.item];
+                    newState = { ...state, media };
+                    break;
+                }
+                case 'REMOVE_MEDIA': {
+                    const media = (state.media || []).filter(m => m.id !== action.id);
+                    newState = { ...state, media };
+                    break;
+                }
+                case 'RESET': {
+                    newState = {
+                        ...state,
+                        components: [],
+                        selectedId: null,
+                    };
+                    break;
+                }
+                default:
+                    return state;
+            }
+            // Auto-save after each action (except LOAD and RESET)
+            if (action.type !== 'LOAD' && action.type !== 'RESET') {
+                saveSite(newState);
+            }
+            return newState;
+        }
+
+        // ================================================================
+        // SAVE TO SERVER
+        // ================================================================
+        async function saveSite(state) {
+            try {
+                const { _id, siteId, ...update } = state;
+                const id = _id || siteId;
+                if (!id) return;
+                await apiFetch(`/api/sites/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(update),
+                });
+            } catch (e) {
+                console.error('Auto-save failed:', e);
+            }
+        }
+
+        // ================================================================
+        // COMPONENTS (same as before, but use API for media)
+        // ================================================================
+        // (all component definitions remain identical to previous version)
+        // I'll include them here but keep them concise.
+
+        // ---- Playlist ----
+        const PlaylistComponent = ({ props, id, dispatch, notify, audioCtx, media }) => {
+            const [playingIdx, setPlayingIdx] = useState(null);
+            const [newTrackName, setNewTrackName] = useState('');
+            const [selectedMediaId, setSelectedMediaId] = useState('');
+            const tracks = props.tracks || [];
+
+            const updateProps = (newProps) => {
+                dispatch({ type: 'UPDATE_PROPS', id, props: {...props, ...newProps } });
+            };
+
+            const addTrack = () => {
+                const mediaItem = media.find(m => m.id === selectedMediaId);
+                if (newTrackName.trim() && mediaItem) {
+                    const newTracks = [...tracks, { name: newTrackName.trim(), url: mediaItem.url, mediaId: mediaItem.id }];
+                    updateProps({ tracks: newTracks });
+                    setNewTrackName('');
+                    setSelectedMediaId('');
+                    notify('Track added');
+                } else if (newTrackName.trim() && !mediaItem) {
+                    notify('Select a media file from the library first', 'danger');
+                }
+            };
+
+            const removeTrack = (idx) => {
+                const newTracks = tracks.filter((_, i) => i !== idx);
+                updateProps({ tracks: newTracks });
+                if (playingIdx === idx) setPlayingIdx(null);
+            };
+
+            const togglePlay = (idx) => {
+                const track = tracks[idx];
+                if (!track || !track.url) {
+                    notify('No audio URL for this track', 'danger');
+                    return;
+                }
+                if (playingIdx === idx) {
+                    setPlayingIdx(null);
+                    audioCtx.pause();
+                } else {
+                    setPlayingIdx(idx);
+                    audioCtx.play(track.url);
+                }
+            };
+
+            const mediaOptions = media || [];
+
+            return (
+                <div>
+                    <div className="text-sm font-medium text-gray-800 mb-1">{props.title}</div>
+                    <button
+                        className="w-full rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2.5 mb-3 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); if (playingIdx === null && tracks.length) { setPlayingIdx(0); if (tracks[0] && tracks[0].url) audioCtx.play(tracks[0].url); } else { setPlayingIdx(null); audioCtx.pause(); } }}>
+                        {playingIdx !== null ? '⏸ Pause All' : '▶ Play / Resume'}
+                    </button>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {tracks.map((track, i) => (
+                            <button key={i} onClick={(e) => { e.stopPropagation(); togglePlay(i); }}
+                                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${playingIdx === i && audioCtx.isPlaying ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                                {playingIdx === i && audioCtx.isPlaying ? '⏸' : '▶'} {track.name}
+                                <span onClick={(e) => { e.stopPropagation(); removeTrack(i); }} className="ml-1 text-red-400 hover:text-red-600">✕</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                            <input type="text" value={newTrackName} onChange={(e) => setNewTrackName(e.target.value)} placeholder="Track name..."
+                                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-gray-400"
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addTrack(); } }}
+                                onClick={(e) => e.stopPropagation()} />
+                            <select value={selectedMediaId} onChange={(e) => setSelectedMediaId(e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-gray-400">
+                                <option value="">Select media...</option>
+                                {mediaOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
+                            <button onClick={(e) => { e.stopPropagation(); addTrack(); }} className="bg-gray-900 hover:bg-gray-800 text-white text-sm rounded-lg px-3 py-1.5 transition-colors">+ Add</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---- SoundButton ----
+        const SoundButtonComponent = ({ id, props, dispatch, notify, audioCtx }) => {
+            const [uploading, setUploading] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const fileName = props.audioUrl ? props.audioUrl.split('/').pop() : '';
+
+            const updateProps = (newProps) => {
+                dispatch({ type: 'UPDATE_PROPS', id, props: {...props, ...newProps } });
+            };
+
+            const handleUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setUploading(true);
+                setProgress(0);
+                try {
+                    const url = await uploadToCloudinaryWithProgress(file, (p) => setProgress(p));
+                    updateProps({ audioUrl: url });
+                    // Add to media library via API
+                    const mediaItem = { id: nextId('media'), name: file.name, url };
+                    dispatch({ type: 'ADD_MEDIA', item: mediaItem });
+                    notify('Audio uploaded!', 'success');
+                } catch (err) {
+                    notify('Upload failed: ' + err.message, 'danger');
+                }
+                setUploading(false);
+                setProgress(0);
+                e.target.value = '';
+            };
+
+            const buttonLabel = props.label || 'Sound Button';
+            return (
+                <div>
+                    <div className="flex gap-2 items-center">
+                        <button onClick={(e) => { e.stopPropagation(); if (props.audioUrl) { audioCtx.togglePlay(props.audioUrl); } else { audioCtx.playBeep(); } }}
+                            style={{ background: props.color || '#1a1a2e' }}
+                            className="flex-1 rounded-full hover:opacity-90 text-white text-sm font-medium py-2.5 transition-colors">
+                            {props.audioUrl ? (audioCtx.isPlaying && audioCtx.audioUrl === props.audioUrl ? '⏸ Pause' : '▶ Play') : '🔊 ' + buttonLabel}
+                        </button>
+                        <label className="cursor-pointer bg-gray-200 hover:bg-gray-300 rounded-full px-3 py-2 text-xs transition-colors">
+                            📁 Upload
+                            <input type="file" accept="audio/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+                        </label>
+                        {props.audioUrl && (
+                            <button onClick={(e) => { e.stopPropagation(); updateProps({ audioUrl: '' }); }} className="text-red-500 hover:text-red-700 text-xs">✕</button>
+                        )}
+                    </div>
+                    {uploading && (
+                        <div className="mt-2">
+                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: progress + '%' }}></div>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">Uploading: {progress}%</div>
+                        </div>
+                    )}
+                    {props.audioUrl && !uploading && (
+                        <div className="text-xs text-green-600 mt-1 truncate">{fileName}</div>
+                    )}
+                </div>
+            );
+        };
+
+        // ---- CustomUploads ----
+        const CustomUploadsComponent = ({ props, dispatch, notify }) => {
+            const [uploading, setUploading] = useState(false);
+            const [progress, setProgress] = useState(0);
+
+            const handleUpload = async (e) => {
+                const selected = Array.from(e.target.files);
+                if (!selected.length) return;
+                setUploading(true);
+                setProgress(0);
+                let total = selected.length;
+                let completed = 0;
+                for (const file of selected) {
+                    try {
+                        const url = await uploadToCloudinaryWithProgress(file, (p) => {
+                            const overall = Math.round(((completed + p / 100) / total) * 100);
+                            setProgress(Math.min(100, overall));
+                        });
+                        const mediaItem = { id: nextId('media'), name: file.name, url };
+                        dispatch({ type: 'ADD_MEDIA', item: mediaItem });
+                        completed++;
+                        setProgress(Math.round((completed / total) * 100));
+                    } catch (err) {
+                        notify('Upload failed: ' + file.name, 'danger');
+                        completed++;
+                        setProgress(Math.round((completed / total) * 100));
+                    }
+                }
+                setUploading(false);
+                setProgress(0);
+                if (completed === total) notify(`${total} file(s) uploaded`, 'success');
+                e.target.value = '';
+            };
+
+            return (
+                <div>
+                    <div className="text-sm font-medium text-gray-800 mb-1">{props.title}</div>
+                    {props.subtitle && <div className="text-xs text-gray-400 mb-3">{props.subtitle}</div>}
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-sm text-gray-400 hover:border-gray-400 transition-colors cursor-pointer relative"
+                        style={{ borderColor: props.color || '#d1d5db' }}>
+                        <input type="file" multiple accept="audio/*" onChange={handleUpload} className="absolute inset-0 opacity-0 cursor-pointer" onClick={(e) => e.stopPropagation()} disabled={uploading} />
+                        {uploading ? <span>⏳ Uploading... {progress}%</span> : <span>Drag & drop or click to upload</span>}
+                    </div>
+                    {uploading && (
+                        <div className="mt-2">
+                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: progress + '%' }}></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ---- Divider ----
+        const DividerComponent = ({ id, props, dispatch }) => {
+            const updateProps = (newProps) => {
+                dispatch({ type: 'UPDATE_PROPS', id, props: {...props, ...newProps } });
+            };
+            return (
+                <div className="section-divider">
+                    <div className="line" style={{ background: props.color || '#d1d5db' }}></div>
+                    <input className="label-input" value={props.label || 'Divider'} onChange={(e) => updateProps({ label: e.target.value })} onClick={(e) => e.stopPropagation()} />
+                    <div className="line" style={{ background: props.color || '#d1d5db' }}></div>
+                </div>
+            );
+        };
+
+        // ---- Render Block ----
+        function renderBlock(item, dispatch, notify, audioCtx, media, state) {
+            const { type, props, id } = item;
+            const Title = () => <div className="text-sm font-medium text-gray-800 mb-1">{props.title}</div>;
+            const Sub = () => props.subtitle ? <div className="text-xs text-gray-400 mb-3">{props.subtitle}</div> : null;
+
+            const updateProps = (newProps) => {
+                dispatch({ type: 'UPDATE_PROPS', id, props: {...props, ...newProps } });
+            };
+
+            switch (type) {
+                case 'SoundButton': return <SoundButtonComponent id={id} props={props} dispatch={dispatch} notify={notify} audioCtx={audioCtx} />;
+                case 'Playlist': return <PlaylistComponent id={id} props={props} dispatch={dispatch} notify={notify} audioCtx={audioCtx} media={media} />;
+                case 'CustomUploads': return <CustomUploadsComponent props={props} dispatch={dispatch} notify={notify} />;
+                case 'SlidesManager':
+                    return (
+                        <div>
+                            <Title /><Sub />
+                            <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-sm text-gray-400 mb-3 hover:border-gray-400 transition-colors cursor-pointer relative"
+                                style={{ borderColor: props.color || '#d1d5db' }}>
+                                <input type="file" multiple accept="image/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onClick={(e) => e.stopPropagation()} />
+                                Upload PDF / PNG / JPEG
+                            </div>
+                            <div className="flex gap-2">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <div key={i} className={`w-14 h-9 rounded-md ${i === 0 ? 'bg-gray-800' : 'bg-gray-200'}`}></div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                case 'ProgressControls': {
+                    const { audioUrl, isPlaying, progress, duration, volume, seek, changeVolume, togglePlay } = audioCtx;
+                    return (
+                        <div>
+                            <div className="text-xs text-gray-400 mb-2 flex justify-between">
+                                <span>{props.title}</span>
+                                <span>{audioUrl ? '▶ Playing' : '⏸ Idle'}</span>
+                            </div>
+                            <input type="range" min="0" max="100" value={progress} onChange={(e) => seek(parseFloat(e.target.value))} className="audio-progress" />
+                            <div className="flex justify-between text-xs text-gray-400">
+                                <span>{duration ? formatTime((progress / 100) * duration) : '0:00'}</span>
+                                <span>{duration ? formatTime(duration) : '0:00'}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-3">
+                                <span className="text-sm text-gray-400">🔊</span>
+                                <input type="range" min="0" max="100" value={volume * 100} onChange={(e) => changeVolume(parseFloat(e.target.value))} className="audio-volume" />
+                                <span className="text-xs text-gray-400">{Math.round(volume * 100)}%</span>
+                                <button onClick={() => audioUrl && togglePlay(audioUrl)} className="text-base font-medium bg-gray-200 hover:bg-gray-300 px-6 py-3 rounded-full transition-colors" style={{ background: props.color || '#e5e7eb' }}>
+                                    {isPlaying ? '⏸ Pause' : '▶ Play'}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                case 'Divider': return <DividerComponent id={id} props={props} dispatch={dispatch} />;
+                default: return <div className="text-sm text-gray-400">Unknown block</div>;
+            }
+        }
+
+        function formatTime(seconds) {
+            if (!seconds || isNaN(seconds)) return '0:00';
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // ================================================================
+        // TOASTS
+        // ================================================================
+        function useToasts() {
+            const [toasts, setToasts] = useState([]);
+            const push = useCallback((message, kind = 'default') => {
+                const id = Date.now() + Math.random();
+                setToasts(t => [...t, { id, message, kind }]);
+                setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2800);
+            }, []);
+            return [toasts, push];
+        }
+        const kindClass = { default: 'bg-gray-900', success: 'bg-emerald-600', danger: 'bg-red-600' };
+        const ToastStack = ({ toasts }) => (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50">
+                {toasts.map(t => <div key={t.id} className={`${kindClass[t.kind]} text-white text-sm font-medium px-5 py-2 rounded-full shadow-lg`}>{t.message}</div>)}
+            </div>
+        );
+
+        // ================================================================
+        // LEFT SIDEBAR
+        // ================================================================
+        const LeftSidebar = ({ state, dispatch, notify }) => {
+            const [activeSidebarTab, setActiveSidebarTab] = useState('sections');
+            const [uploading, setUploading] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const media = state.media || [];
+
+            const handleMediaUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+                setUploading(true);
+                setProgress(0);
+                let total = files.length;
+                let completed = 0;
+                for (const file of files) {
+                    try {
+                        const url = await uploadToCloudinaryWithProgress(file, (p) => {
+                            const overall = Math.round(((completed + p / 100) / total) * 100);
+                            setProgress(Math.min(100, overall));
+                        });
+                        const mediaItem = { id: nextId('media'), name: file.name, url };
+                        dispatch({ type: 'ADD_MEDIA', item: mediaItem });
+                        completed++;
+                        setProgress(Math.round((completed / total) * 100));
+                    } catch (err) {
+                        notify('Upload failed: ' + file.name, 'danger');
+                        completed++;
+                        setProgress(Math.round((completed / total) * 100));
+                    }
+                }
+                setUploading(false);
+                setProgress(0);
+                if (completed === total) notify(`${total} file(s) uploaded`, 'success');
+                e.target.value = '';
+            };
+
+            const removeMedia = (id) => {
+                if (confirm('Remove this file from the library?')) {
+                    dispatch({ type: 'REMOVE_MEDIA', id });
+                    notify('Media removed');
+                }
+            };
+
+            const copyUrl = (url) => {
+                navigator.clipboard.writeText(url).then(() => {
+                    notify('URL copied!');
+                }).catch(() => {});
+            };
+
+            return (
+                <div className="w-64 bg-white border-r border-gray-200 flex flex-col py-4 px-3 gap-2 overflow-y-auto flex-shrink-0">
+                    <div className="sidebar-tabs">
+                        <div className={`sidebar-tab ${activeSidebarTab === 'sections' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('sections')}>Sections</div>
+                        <div className={`sidebar-tab ${activeSidebarTab === 'media' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('media')}>Media</div>
+                        <div className={`sidebar-tab ${activeSidebarTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('settings')}>Settings</div>
+                    </div>
+
+                    <div className="sidebar-tab-content">
+                        {activeSidebarTab === 'sections' && (
+                            <div>
+                                {Object.entries(BLOCK_META).map(([type, meta]) => (
+                                    <button key={type} onClick={() => { dispatch({ type: 'ADD', blockType: type }); notify(`${meta.label} added`); }}
+                                        className="flex flex-col items-center gap-2 w-full py-3 hover:bg-gray-50 rounded-lg transition-colors">
+                                        {Icons[meta.icon]({ size: 22, className: 'text-gray-800' })}
+                                        <span className="text-xs text-gray-600">{meta.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {activeSidebarTab === 'media' && (
+                            <div>
+                                <label className="block w-full text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-2 cursor-pointer transition-colors mb-2">
+                                    {uploading ? `⏳ Uploading ${progress}%` : '📤 Upload Audio'}
+                                    <input type="file" multiple accept="audio/*" className="hidden" onChange={handleMediaUpload} disabled={uploading} />
+                                </label>
+                                {uploading && (
+                                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+                                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: progress + '%' }}></div>
+                                    </div>
+                                )}
+                                <div className="media-grid">
+                                    {media.length === 0 ? (
+                                        <div className="col-span-2 text-xs text-gray-400 text-center py-4">No media yet</div>
+                                    ) : (
+                                        media.map(m => (
+                                            <div key={m.id} className="media-item" onClick={() => copyUrl(m.url)}>
+                                                <div className="name">{m.name}</div>
+                                                <button className="remove-btn" onClick={(e) => { e.stopPropagation(); removeMedia(m.id); }}>✕</button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {activeSidebarTab === 'settings' && (
+                            <div>
+                                <div className="mb-3">
+                                    <label className="text-xs font-medium text-gray-500 block mb-1.5">Page Background</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="color" value={state.bgColor || '#f8fafc'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
+                                        <input type="text" value={state.bgColor || '#f8fafc'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    </div>
+                                </div>
+                                <div className="mb-3">
+                                    <label className="text-xs font-medium text-gray-500 block mb-1.5">Top Bar Colour</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="color" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
+                                        <input type="text" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // ================================================================
+        // CANVAS
+        // ================================================================
+        const Canvas = ({ state, dispatch, notify, previewMode, audioCtx }) => {
+            const [dragOverId, setDragOverId] = useState(null);
+            const dragRef = useRef(null);
+            const { components, activeTab, tabs, selectedId, media, bgColor } = state;
+
+            const tabItems = components.filter(c => c.tab === activeTab);
+
+            const renderList = (items, groupTab) => items.map((item, idx) => (
+                <div key={item.id}
+                    className={`relative rounded-xl border-2 mb-4 transition-colors p-4
+                        ${selectedId === item.id ? 'border-gray-800' : 'border-transparent hover:border-gray-200'}
+                        ${dragOverId === item.id ? 'border-t-4 border-t-gray-400' : ''}`}
+                    draggable={!previewMode}
+                    onClick={e => { e.stopPropagation(); dispatch({ type: 'SELECT', id: item.id }); }}
+                    onDragStart={() => { dragRef.current = item.id; e.dataTransfer.setData('text/plain', item.id); }}
+                    onDragOver={e => { e.preventDefault(); setDragOverId(item.id); }}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={e => { e.preventDefault(); if (dragRef.current) dispatch({ type: 'REORDER', fromId: dragRef.current, toId: item.id, toTab: groupTab }); setDragOverId(null); }}
+                    onDragEnd={() => { dragRef.current = null; setDragOverId(null); }}>
+                    {!previewMode && selectedId === item.id && (
+                        <div className="absolute -top-4 right-3 flex gap-0.5 bg-gray-900 rounded-lg p-1 shadow-lg z-10">
+                            <button className="text-white p-1.5 rounded hover:bg-white/15 disabled:opacity-30" disabled={idx === 0}
+                                onClick={e => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: groupTab, direction: -1 }); }}>{Icons.up({ size: 13 })}</button>
+                            <button className="text-white p-1.5 rounded hover:bg-white/15 disabled:opacity-30" disabled={idx === items.length - 1}
+                                onClick={e => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: groupTab, direction: 1 }); }}>{Icons.down({ size: 13 })}</button>
+                            <button className="text-white p-1.5 rounded hover:bg-white/15"
+                                onClick={e => { e.stopPropagation(); dispatch({ type: 'DUPLICATE', id: item.id }); notify('Duplicated'); }}>{Icons.copy({ size: 13 })}</button>
+                            <button className="text-white p-1.5 rounded hover:bg-red-600"
+                                onClick={e => { e.stopPropagation(); dispatch({ type: 'DELETE', id: item.id }); notify('Removed', 'danger'); }}>{Icons.trash({ size: 13 })}</button>
+                        </div>
+                    )}
+                    {renderBlock(item, dispatch, notify, audioCtx, media, state)}
+                </div>
+            ));
+
+            const renameTab = (tab) => {
+                const label = prompt('Rename tab', tab.label);
+                if (label && label.trim()) dispatch({ type: 'RENAME_TAB', id: tab.id, label: label.trim() });
+            };
+            const addTab = () => {
+                const label = prompt('New tab name', `Tab ${tabs.length + 1}`);
+                if (label && label.trim()) dispatch({ type: 'ADD_TAB', label: label.trim() });
+            };
+
+            return (
+                <div className="flex-1 bg-slate-50 p-8 flex flex-col overflow-hidden" onClick={() => dispatch({ type: 'SELECT', id: null })}
+                    style={{ background: bgColor || '#f8fafc' }}>
+                    <div className="bg-white rounded-2xl flex-1 flex flex-col overflow-hidden" style={{ boxShadow: '0 8px 30px rgb(0,0,0,0.04)' }}>
+                        {!previewMode && (
+                            <div className="p-4 flex items-center gap-4 border-b border-gray-200 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                {tabs.map(tab => (
+                                    <div key={tab.id} className="flex items-center gap-1.5">
+                                        <button onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id })}
+                                            className={`text-sm font-medium ${activeTab === tab.id ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>{tab.label}</button>
+                                        {activeTab === tab.id && (
+                                            <button onClick={() => renameTab(tab)} className="text-gray-400 hover:text-gray-600">{Icons.pencil({ size: 12 })}</button>
+                                        )}
+                                    </div>
+                                ))}
+                                <button onClick={addTab} className="text-gray-500 hover:text-gray-800 ml-1">{Icons.plus({ size: 16 })}</button>
+                            </div>
+                        )}
+                        <div className="flex-1 overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                            {tabItems.length === 0 ? (
+                                <div className="text-center text-sm text-gray-300 py-20">No sections on this tab yet — add one from the left panel.</div>
+                            ) : (
+                                renderList(tabItems, activeTab)
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ================================================================
+        // RIGHT SIDEBAR
+        // ================================================================
+        const RightSidebar = ({ selectedItem, tabs, dispatch }) => {
+            if (!selectedItem) {
+                return (
+                    <div className="w-64 bg-white border-l border-gray-200 p-6 flex-shrink-0 overflow-y-auto">
+                        <div className="text-sm font-medium text-gray-900 mb-4">Properties</div>
+                        <div className="text-xs text-gray-400">Select a block to edit</div>
+                    </div>
+                );
+            }
+
+            const isSoundButton = selectedItem.type === 'SoundButton';
+            const isPlaylist = selectedItem.type === 'Playlist';
+            const isDivider = selectedItem.type === 'Divider';
+
+            return (
+                <div className="w-64 bg-white border-l border-gray-200 p-6 flex-shrink-0 overflow-y-auto">
+                    <div className="text-sm font-medium text-gray-900 mb-4">Properties</div>
+                    <div className="flex flex-col gap-4">
+                        {isSoundButton && (
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Button Label</label>
+                                <input type="text" value={selectedItem.props.label || ''}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, label: e.target.value } })}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                            </div>
+                        )}
+                        {!isSoundButton && !isPlaylist && !isDivider && (
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Title</label>
+                                <input type="text" value={selectedItem.props.title || ''}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, title: e.target.value } })}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                            </div>
+                        )}
+                        {isDivider && (
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Label</label>
+                                <input type="text" value={selectedItem.props.label || ''}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, label: e.target.value } })}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                            </div>
+                        )}
+                        {isPlaylist && (
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Playlist Title</label>
+                                <input type="text" value={selectedItem.props.title || ''}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, title: e.target.value } })}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                            </div>
+                        )}
+                        {'subtitle' in selectedItem.props && (
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Helper text</label>
+                                <textarea rows="2" value={selectedItem.props.subtitle || ''}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, subtitle: e.target.value } })}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400 resize-none" />
+                            </div>
+                        )}
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 block mb-1.5">Colour</label>
+                            <div className="flex items-center gap-2">
+                                <input type="color" value={selectedItem.props.color || '#1a1a2e'}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, color: e.target.value } })}
+                                    className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
+                                <input type="text" value={selectedItem.props.color || '#1a1a2e'}
+                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, color: e.target.value } })}
+                                    className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 block mb-1.5">Tab</label>
+                            <select value={selectedItem.tab} onChange={e => dispatch({ type: 'SET_TAB', id: selectedItem.id, tab: e.target.value })}
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400">
+                                {tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ================================================================
+        // PUBLISH
+        // ================================================================
+        async function publishLayout(state, notify) {
+            try {
+                const json = JSON.stringify(state, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const file = new File([blob], `${state.siteName || 'layout'}.json`, { type: 'application/json' });
+                const url = await uploadToCloudinaryWithProgress(file, (p) => {});
+                // Optionally, we can store the cloudUrl in the site as well.
+                // But we'll just notify the user.
+                const shareUrl = `${window.location.origin}${window.location.pathname}?load=${encodeURIComponent(url)}`;
+                navigator.clipboard.writeText(shareUrl).catch(() => {});
+                notify(`✅ Published! Share: ${shareUrl}`, 'success');
+                return shareUrl;
+            } catch (e) {
+                notify('❌ Publish failed: ' + e.message, 'danger');
+                return null;
+            }
+        }
+
+        // ================================================================
+        // APP
+        // ================================================================
+        const App = () => {
+            const [state, dispatch] = useReducer(reducer, initialState);
+            const [previewMode, setPreviewMode] = useState(false);
+            const [toasts, notify] = useToasts();
+            const [loading, setLoading] = useState(true);
+            const selectedItem = state.components.find(c => c.id === state.selectedId) || null;
+            const audioCtx = useContext(AudioContext);
+
+            const [logoUploading, setLogoUploading] = useState(false);
+            const [logoProgress, setLogoProgress] = useState(0);
+
+            // Load site from server on mount
+            useEffect(() => {
+                async function loadSite() {
+                    if (siteId) {
+                        try {
+                            const sites = await apiFetch('/api/sites');
+                            const site = sites.find(s => s._id === siteId || s.id === siteId);
+                            if (site) {
+                                dispatch({ type: 'LOAD', state: site });
+                            } else {
+                                // Site not found, redirect to dashboard
+                                window.location.href = '/dashboard.html';
+                            }
+                        } catch (e) {
+                            console.error('Failed to load site', e);
+                        }
+                    } else {
+                        // No site ID, redirect to dashboard
+                        window.location.href = '/dashboard.html';
+                    }
+                    setLoading(false);
+                }
+                loadSite();
+            }, []);
+
+            // Handle logo upload
+            const handleLogoUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setLogoUploading(true);
+                setLogoProgress(0);
+                try {
+                    const url = await uploadToCloudinaryWithProgress(file, (p) => setLogoProgress(p));
+                    dispatch({ type: 'SET_LOGO', url });
+                    notify('Logo uploaded!', 'success');
+                } catch (err) {
+                    notify('Logo upload failed: ' + err.message, 'danger');
+                }
+                setLogoUploading(false);
+                setLogoProgress(0);
+                e.target.value = '';
+            };
+
+            // Load from cloud URL (if present)
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const loadUrl = params.get('load');
+                if (loadUrl) {
+                    fetch(loadUrl)
+                        .then(res => {
+                            if (!res.ok) throw new Error('Network error');
+                            return res.json();
+                        })
+                        .then(data => {
+                            if (data.siteId) {
+                                dispatch({ type: 'LOAD', state: data });
+                                notify('Loaded from cloud!', 'success');
+                            } else {
+                                notify('Invalid cloud data', 'danger');
+                            }
+                        })
+                        .catch(err => {
+                            notify('Failed to load from cloud: ' + err.message, 'danger');
+                        });
+                    const cleanUrl = window.location.href.split('?')[0];
+                    window.history.replaceState({}, '', cleanUrl);
+                }
+            }, []);
+
+            if (loading) {
+                return <div className="h-screen flex items-center justify-center">Loading...</div>;
+            }
+
+            const topBarStyle = { background: state.topBarColor || '#ffffff' };
+
+            return (
+                <div className="h-screen w-screen flex flex-col bg-slate-50 overflow-hidden">
+                    <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0 gap-3" style={topBarStyle}>
+                        <div className="flex items-center gap-3">
+                            <div className="logo-wrapper">
+                                {state.logoUrl && <img src={state.logoUrl} alt="Logo" />}
+                                {!state.logoUrl && <span className="text-xs text-gray-400">No logo</span>}
+                            </div>
+                            <button className="top-btn" onClick={() => document.getElementById('logoInput').click()} disabled={logoUploading}>
+                                {logoUploading ? `⏳ ${logoProgress}%` : '📷 Upload'}
+                            </button>
+                            <input id="logoInput" type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={logoUploading} />
+                            {state.logoUrl && (
+                                <button className="top-btn-icon" onClick={() => dispatch({ type: 'SET_LOGO', url: '' })}>✕</button>
+                            )}
+                            <input type="text" value={state.siteName} onChange={(e) => dispatch({ type: 'SET_NAME', name: e.target.value })}
+                                className="site-name-input" />
+                        </div>
+                        <div className="flex gap-3 items-center flex-wrap">
+                            <button onClick={() => { if (confirm('Reset the whole layout?')) { dispatch({ type: 'RESET' }); notify('Reset', 'danger'); } }}
+                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
+                                {Icons.reset({ size: 15 })} Reset
+                            </button>
+                            <button onClick={() => { setPreviewMode(!previewMode); notify(previewMode ? 'Editing' : 'Preview'); }}
+                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
+                                {Icons.eye({ size: 15 })} {previewMode ? 'Edit' : 'Preview'}
+                            </button>
+                            <button onClick={() => publishLayout(state, notify)}
+                                className="rounded-full px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-2">
+                                {Icons.cloud({ size: 15 })} Publish
+                            </button>
+                            <button onClick={() => window.location.href = '/dashboard.html'}
+                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
+                                <i className="fas fa-arrow-left"></i> Dashboard
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex-1 flex overflow-hidden">
+                        {!previewMode && <LeftSidebar state={state} dispatch={dispatch} notify={notify} />}
+                        <Canvas state={state} dispatch={dispatch} notify={notify} previewMode={previewMode} audioCtx={audioCtx} />
+                        {!previewMode && <RightSidebar selectedItem={selectedItem} tabs={state.tabs} dispatch={dispatch} />}
+                    </div>
+                    <ToastStack toasts={toasts} />
+                </div>
+            );
+        };
+
+        const Root = () => (
+            <AudioProvider>
+                <App />
+            </AudioProvider>
+        );
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+    </script>
+</body>
+</html>

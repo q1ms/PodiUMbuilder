@@ -1,0 +1,7 @@
+node_modules/
+uploads/
+config.json
+config.js
+.env
+.DS_Store
+*.log
