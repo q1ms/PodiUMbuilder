@@ -248,8 +248,7 @@
                             const canvas = document.createElement('canvas');
                             canvas.width = viewport.width;
                             canvas.height = viewport.height;
-                            const renderResult = page.render({ canvasContext: canvas.getContext('2d'), viewport });
-                            await (renderResult.promise || renderResult);
+                            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                             newSlides.push(canvas.toDataURL('image/png'));
                         }
                     } else if (file.type.startsWith('image/')) {
@@ -267,6 +266,22 @@
 
             const goNext = () => slides.length && setCurrentIndex((currentIndex + 1) % slides.length);
             const goPrev = () => slides.length && setCurrentIndex((currentIndex - 1 + slides.length) % slides.length);
+
+            const deleteSlide = (idx) => {
+                const updated = slides.filter((_, i) => i !== idx);
+                setSlides(updated);
+                if (currentIndex >= updated.length) setCurrentIndex(Math.max(0, updated.length - 1));
+            };
+
+            const moveSlide = (idx, direction) => {
+                const newIdx = idx + direction;
+                if (newIdx < 0 || newIdx >= slides.length) return;
+                const updated = [...slides];
+                [updated[idx], updated[newIdx]] = [updated[newIdx], updated[idx]];
+                setSlides(updated);
+                if (currentIndex === idx) setCurrentIndex(newIdx);
+                else if (currentIndex === newIdx) setCurrentIndex(idx);
+            };
 
             // Fullscreen presentation mode
             useEffect(() => {
@@ -299,18 +314,45 @@
                             </div>
 
                             {/* Controls */}
-                            <div className="flex items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                                 <button onClick={goPrev} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">◀ Prev</button>
                                 <span className="text-xs text-gray-500">{currentIndex + 1} / {slides.length}</span>
                                 <button onClick={goNext} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">Next ▶</button>
                                 <button onClick={() => setFullscreen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-4 py-2 text-sm font-medium">▶ Fullscreen</button>
                             </div>
 
-                            {/* Thumbnails */}
-                            <div className="flex gap-2 overflow-x-auto pb-2">
+                            {/* Thumbnails with delete + reorder controls */}
+                            <div className="flex gap-2 overflow-x-auto pb-3">
                                 {slides.map((s, i) => (
-                                    <img key={i} src={s} alt={`Thumb ${i + 1}`} onClick={() => setCurrentIndex(i)}
-                                        className={`h-12 w-20 object-cover rounded cursor-pointer border-2 ${i === currentIndex ? 'border-emerald-500' : 'border-transparent'}`} />
+                                    <div key={i} className="relative flex-shrink-0 group">
+                                        <img
+                                            src={s}
+                                            alt={`Thumb ${i+1}`}
+                                            onClick={() => setCurrentIndex(i)}
+                                            className={`h-16 w-24 object-cover rounded cursor-pointer border-2 ${i === currentIndex ? 'border-emerald-500' : 'border-transparent'}`}
+                                        />
+                                        <div className="absolute top-0.5 right-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); deleteSlide(i); }}
+                                                className="bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center"
+                                                title="Delete"
+                                            >✕</button>
+                                        </div>
+                                        <div className="absolute bottom-0.5 left-0.5 right-0.5 flex justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); moveSlide(i, -1); }}
+                                                disabled={i === 0}
+                                                className="bg-black/70 hover:bg-black text-white rounded w-5 h-5 text-xs disabled:opacity-30"
+                                                title="Move left"
+                                            >◀</button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); moveSlide(i, 1); }}
+                                                disabled={i === slides.length - 1}
+                                                className="bg-black/70 hover:bg-black text-white rounded w-5 h-5 text-xs disabled:opacity-30"
+                                                title="Move right"
+                                            >▶</button>
+                                        </div>
+                                    </div>
                                 ))}
                             </div>
                         </>
@@ -341,20 +383,31 @@
                     <span>{props.title || 'Now Playing'}</span>
                     <span>{audioCtx.audioUrl ? '▶ Playing' : '⏸ Idle'}</span>
                 </div>
+
+                {/* Progress bar - full width */}
                 <input type="range" min="0" max="100" value={audioCtx.progress}
-                    onChange={(e) => audioCtx.seek(parseFloat(e.target.value))} className="audio-progress" />
+                    onChange={(e) => audioCtx.seek(parseFloat(e.target.value))} className="audio-progress w-full" />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                     <span>{audioCtx.duration ? formatTime((audioCtx.progress / 100) * audioCtx.duration) : '0:00'}</span>
                     <span>{audioCtx.duration ? formatTime(audioCtx.duration) : '0:00'}</span>
                 </div>
-                <div className="flex items-center gap-3 mt-3">
+
+                {/* Volume slider - 90% width, centered */}
+                <div className="flex items-center justify-center gap-3 mt-4">
                     <span className="text-sm text-gray-500">🔊</span>
                     <input type="range" min="0" max="100" value={audioCtx.volume * 100}
-                        onChange={(e) => audioCtx.changeVolume(parseFloat(e.target.value))} className="audio-volume" />
-                    <span className="text-xs text-gray-400">{Math.round(audioCtx.volume * 100)}%</span>
-                    <button onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
-                        className="text-sm font-semibold bg-gray-200 hover:bg-gray-300 px-5 py-2 rounded-full transition-colors"
-                        style={{ background: props.color || '#e5e7eb' }}>
+                        onChange={(e) => audioCtx.changeVolume(parseFloat(e.target.value))}
+                        style={{ width: '85%' }}
+                        className="audio-volume" />
+                    <span className="text-xs text-gray-400 w-8 text-right">{Math.round(audioCtx.volume * 100)}%</span>
+                </div>
+
+                {/* Play/Pause button - 75% width, centered */}
+                <div className="flex justify-center mt-3">
+                    <button
+                        onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
+                        style={{ width: '75%', background: props.color || '#0d9488' }}
+                        className="text-base font-semibold text-white hover:opacity-90 px-6 py-3 rounded-full transition-colors">
                         {audioCtx.isPlaying ? '⏸ Pause' : '▶ Play'}
                     </button>
                 </div>

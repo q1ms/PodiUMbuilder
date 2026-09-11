@@ -750,6 +750,7 @@
                         completed++;
                     }
                 }
+                // Just save the file list — no auto-play
                 updateProps({ files: newFiles });
                 setUploading(false);
                 setProgress(0);
@@ -768,7 +769,9 @@
 
                     <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-sm text-gray-400 hover:border-gray-400 transition-colors cursor-pointer relative"
                         style={{ borderColor: props.color || '#d1d5db' }}>
-                        <input type="file" multiple accept="audio/*" onChange={handleUpload} className="absolute inset-0 opacity-0 cursor-pointer" onClick={(e) => e.stopPropagation()} disabled={uploading} />
+                        <input type="file" multiple accept="audio/*" onChange={handleUpload}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()} disabled={uploading} />
                         {uploading ? <span>⏳ Uploading... {progress}%</span> : <span>Drag & drop or click to upload</span>}
                     </div>
 
@@ -780,18 +783,26 @@
                         </div>
                     )}
 
-                    {/* Uploaded file buttons */}
+                    {/* Uploaded file buttons — click to play, NOT auto-play */}
                     {files.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
                             {files.map(f => (
-                                <button
-                                    key={f.id}
-                                    onClick={(e) => { e.stopPropagation(); window.__audioCtx?.play(f.url); }}
-                                    className="bg-gray-900 hover:bg-gray-800 text-white text-xs rounded-full px-4 py-2 transition-colors flex items-center gap-2"
-                                >
-                                    ▶ {f.name}
-                                    <span onClick={(e) => { e.stopPropagation(); removeFile(f.id); }} className="text-red-400 hover:text-red-600">✕</span>
-                                </button>
+                                <div key={f.id} className="flex items-center gap-1 bg-gray-900 text-white text-xs rounded-full pl-3 pr-1 py-1">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            window.__audioCtx?.togglePlay(f.url);
+                                        }}
+                                        className="flex items-center gap-2 hover:opacity-80"
+                                    >
+                                        <span>▶</span>
+                                        <span>{f.name}</span>
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                                        className="text-red-400 hover:text-red-600 px-2"
+                                    >✕</button>
+                                </div>
                             ))}
                         </div>
                     )}
@@ -843,30 +854,43 @@
                             </div>
                         </div>
                     );
-                case 'ProgressControls': {
-                    const { audioUrl, isPlaying, progress, duration, volume, seek, changeVolume, togglePlay } = audioCtx;
+                case 'ProgressControls':
                     return (
-                        <div>
-                            <div className="text-xs text-gray-400 mb-2 flex justify-between">
-                                <span>{props.title}</span>
-                                <span>{audioUrl ? '▶ Playing' : '⏸ Idle'}</span>
+                        <div className="mb-4 bg-gray-50 rounded-xl p-4">
+                            <div className="text-xs text-gray-500 mb-2 flex justify-between">
+                                <span>{props.title || 'Now Playing'}</span>
+                                <span>{audioCtx.audioUrl ? '▶ Playing' : '⏸ Idle'}</span>
                             </div>
-                            <input type="range" min="0" max="100" value={progress} onChange={(e) => seek(parseFloat(e.target.value))} className="audio-progress" />
-                            <div className="flex justify-between text-xs text-gray-400">
-                                <span>{duration ? formatTime((progress / 100) * duration) : '0:00'}</span>
-                                <span>{duration ? formatTime(duration) : '0:00'}</span>
+
+                            {/* Progress bar - full width */}
+                            <input type="range" min="0" max="100" value={audioCtx.progress}
+                                onChange={(e) => audioCtx.seek(parseFloat(e.target.value))} className="audio-progress w-full" />
+                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                <span>{audioCtx.duration ? formatTime((audioCtx.progress / 100) * audioCtx.duration) : '0:00'}</span>
+                                <span>{audioCtx.duration ? formatTime(audioCtx.duration) : '0:00'}</span>
                             </div>
-                            <div className="flex items-center gap-3 mt-3">
-                                <span className="text-sm text-gray-400">🔊</span>
-                                <input type="range" min="0" max="100" value={volume * 100} onChange={(e) => changeVolume(parseFloat(e.target.value))} className="audio-volume" />
-                                <span className="text-xs text-gray-400">{Math.round(volume * 100)}%</span>
-                                <button onClick={() => audioUrl && togglePlay(audioUrl)} className="text-base font-medium bg-gray-200 hover:bg-gray-300 px-6 py-3 rounded-full transition-colors" style={{ background: props.color || '#e5e7eb' }}>
-                                    {isPlaying ? '⏸ Pause' : '▶ Play'}
+
+                            {/* Volume slider - 90% width, centered */}
+                            <div className="flex items-center justify-center gap-3 mt-4">
+                                <span className="text-sm text-gray-500">🔊</span>
+                                <input type="range" min="0" max="100" value={audioCtx.volume * 100}
+                                    onChange={(e) => audioCtx.changeVolume(parseFloat(e.target.value))}
+                                    style={{ width: '85%' }}
+                                    className="audio-volume" />
+                                <span className="text-xs text-gray-400 w-8 text-right">{Math.round(audioCtx.volume * 100)}%</span>
+                            </div>
+
+                            {/* Play/Pause button - 75% width, centered */}
+                            <div className="flex justify-center mt-3">
+                                <button
+                                    onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
+                                    style={{ width: '75%', background: props.color || '#0d9488' }}
+                                    className="text-base font-semibold text-white hover:opacity-90 px-6 py-3 rounded-full transition-colors">
+                                    {audioCtx.isPlaying ? '⏸ Pause' : '▶ Play'}
                                 </button>
                             </div>
                         </div>
                     );
-                }
                 case 'Divider': return <DividerComponent id={id} props={props} dispatch={dispatch} />;
                 default: return <div className="text-sm text-gray-400">Unknown block</div>;
             }
