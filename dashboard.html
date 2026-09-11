@@ -3,149 +3,260 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard – Site Builder</title>
+    <title>Dashboard — Podi@UM</title>
+    <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
-        .topbar { background: #fff; padding: 12px 30px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e0e0e0; }
-        .topbar .logo { font-size: 1.4rem; font-weight: 700; color: #0d9488; display: flex; align-items: center; gap: 8px; }
-        .topbar .actions { display: flex; gap: 12px; }
-        .btn { padding: 8px 18px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .btn-primary { background: #0d9488; color: #fff; }
-        .btn-primary:hover { background: #0f766e; }
-        .btn-secondary { background: #e2e8f0; color: #1a1a2e; }
-        .btn-secondary:hover { background: #cbd5e1; }
-        .hero-banner { background: linear-gradient(135deg, #0d9488, #0f766e); margin: 20px 30px; padding: 40px 50px; border-radius: 16px; color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
-        .hero-banner h2 { font-size: 2rem; font-weight: 300; }
-        .hero-banner h2 strong { font-weight: 700; }
-        .hero-banner .btn { background: #fff; color: #0d9488; padding: 12px 28px; border-radius: 30px; font-weight: 700; }
-        .toolbar { display: flex; justify-content: space-between; padding: 0 30px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-        .toolbar .search-box { display: flex; align-items: center; background: #fff; border-radius: 8px; padding: 4px 12px; border: 1px solid #e0e0e0; flex: 1; min-width: 200px; max-width: 400px; }
-        .toolbar .search-box input { border: none; padding: 8px 10px; width: 100%; font-size: 0.9rem; outline: none; }
-        .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; padding: 0 30px 40px; }
-        .project-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: 0.2s; cursor: pointer; overflow: hidden; border: 1px solid #e8eaed; }
-        .project-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.10); transform: translateY(-4px); }
-        .project-card .card-preview { height: 120px; background: #f8fafc; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: #94a3b8; border-bottom: 1px solid #e8eaed; position: relative; }
-        .project-card .card-body { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
-        .project-card .card-body .title { font-weight: 700; font-size: 1.1rem; }
-        .project-card .card-body .meta { font-size: 0.8rem; color: #94a3b8; }
-        .project-card .card-body .actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
-        .project-card .card-body .actions button { background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #64748b; transition: 0.2s; padding: 4px 8px; border-radius: 4px; }
-        .project-card .card-body .actions button:hover { background: #f1f5f9; color: #0d9488; }
-        .project-card .card-body .actions .delete-btn:hover { color: #cc0000; background: #fee2e2; }
-        .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8; }
-        .empty-state i { font-size: 3rem; margin-bottom: 12px; display: block; color: #cbd5e1; }
-        #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999999; }
-        #loginBox { background: white; padding: 40px; border-radius: 16px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        #loginBox h2 { margin-bottom: 8px; }
-        #loginBox p { opacity: 0.6; margin-bottom: 20px; }
-        #loginBox input { width: 100%; padding: 10px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 1rem; margin-bottom: 12px; }
-        #loginBox .btn { width: 100%; padding: 12px; }
-        .login-error { color: #cc0000; font-size: 0.9rem; margin-top: 8px; display: none; }
+        body { background: var(--color-bg-subtle); }
+        .topbar {
+            background: #fff;
+            border-bottom: 1px solid var(--color-gray-lighter);
+            padding: var(--space-4) 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo-mark {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--color-brand), var(--color-navy));
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: 18px;
+        }
+        .hero {
+            background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
+            border-radius: var(--radius-xl);
+            padding: var(--space-12) var(--space-10);
+            color: #fff;
+            margin: var(--space-8) 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%; right: -10%;
+            width: 400px; height: 400px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+        }
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: -30%; left: 30%;
+            width: 300px; height: 300px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 50%;
+        }
+        .hero > * { position: relative; z-index: 1; }
+        .hero h1 { font-size: var(--text-display); color: #fff; margin-bottom: var(--space-3); }
+        .hero p { color: rgba(255,255,255,0.85); font-size: var(--text-h4); font-weight: 400; max-width: 500px; }
+
+        .toolbar {
+            display: flex;
+            gap: var(--space-4);
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-6);
+            flex-wrap: wrap;
+        }
+        .search-box {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            background: #fff;
+            border: 1px solid var(--color-gray-lighter);
+            border-radius: var(--radius-md);
+            padding: 0 var(--space-4);
+            height: 40px;
+            flex: 1;
+            min-width: 240px;
+            max-width: 400px;
+            transition: all var(--transition-fast);
+        }
+        .search-box:focus-within {
+            border-color: var(--color-brand);
+            box-shadow: 0 0 0 3px var(--color-brand-tint);
+        }
+        .search-box i { color: var(--color-gray-light); font-size: 14px; }
+        .search-box input {
+            border: none;
+            outline: none;
+            flex: 1;
+            font-family: var(--font-family);
+            font-size: var(--text-sm);
+            color: var(--color-navy);
+            background: transparent;
+        }
+
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: var(--space-6);
+            padding-bottom: var(--space-12);
+        }
+        .project-card {
+            background: #fff;
+            border: 1px solid var(--color-gray-lighter);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            cursor: pointer;
+            transition: all var(--transition-base);
+        }
+        .project-card:hover {
+            border-color: var(--color-brand);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-4px);
+        }
+        .project-preview {
+            height: 140px;
+            background: linear-gradient(135deg, var(--color-bg-tint) 0%, var(--color-brand-tint) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            font-size: 40px;
+            color: var(--color-brand);
+        }
+        .project-body { padding: var(--space-5); }
+        .project-title {
+            font-size: var(--text-h4);
+            font-weight: 600;
+            color: var(--color-navy);
+            margin-bottom: var(--space-2);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .project-meta {
+            font-size: var(--text-xs);
+            color: var(--color-gray-light);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-4);
+        }
+        .project-actions {
+            display: flex;
+            gap: var(--space-2);
+            justify-content: flex-end;
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: var(--space-16) var(--space-6);
+            color: var(--color-gray);
+        }
+        .empty-state i { font-size: 48px; color: var(--color-gray-lighter); margin-bottom: var(--space-4); display: block; }
+
+        /* Login page */
+        .login-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-6);
+            background: linear-gradient(135deg, var(--color-bg-subtle) 0%, var(--color-brand-tint) 100%);
+        }
+        .login-card {
+            background: #fff;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-xl);
+            padding: var(--space-10);
+            max-width: 420px;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
 
-    <div id="loginOverlay">
-        <div id="loginBox">
-            <h2>🔐 Welcome</h2>
-            <p>Enter the admin password to access the dashboard.</p>
-            <input type="password" id="passwordInput" placeholder="Password" />
-            <button class="btn btn-primary" id="loginBtn">Log In</button>
-            <div class="login-error" id="loginError">Wrong password. Try again.</div>
+    <!-- ===== LOGIN ===== -->
+    <div id="loginOverlay" class="login-wrapper">
+        <div class="login-card animate-slide">
+            <div class="logo-mark" style="width:48px;height:48px;font-size:24px;margin-bottom:var(--space-6);">P</div>
+            <h1 class="t-h2" style="margin-bottom:var(--space-2);">Welcome back</h1>
+            <p class="t-body" style="margin-bottom:var(--space-8);">Sign in to manage your event sites.</p>
+            <label class="label">Password</label>
+            <input type="password" id="passwordInput" class="input input-lg" placeholder="Enter admin password" autofocus style="margin-bottom:var(--space-4);" />
+            <button class="btn btn-primary btn-lg btn-full" id="loginBtn">Sign In</button>
+            <div class="login-error" id="loginError" style="color:var(--color-danger);font-size:var(--text-sm);margin-top:var(--space-3);display:none;">Incorrect password. Please try again.</div>
         </div>
     </div>
 
+    <!-- ===== DASHBOARD ===== -->
     <div id="dashboardContent" style="display:none;">
         <div class="topbar">
-            <div class="logo"><i class="fas fa-wand-magic-sparkles"></i> SiteBuilder</div>
-            <div class="actions">
-                <button class="btn btn-primary" id="createSiteBtn"><i class="fas fa-plus"></i> Create New Site</button>
-                <button class="btn btn-secondary" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+            <div class="container" style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:var(--space-3);">
+                    <div class="logo-mark">P</div>
+                    <div>
+                        <div style="font-weight:700;color:var(--color-navy);font-size:var(--text-h4);">Podi@UM</div>
+                        <div style="font-size:var(--text-xs);color:var(--color-gray-light);">Event Presentation System</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:var(--space-3);">
+                    <button class="btn btn-secondary" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                </div>
             </div>
         </div>
 
-        <div class="hero-banner">
-            <div>
-                <h2>Start creating something <strong>new</strong></h2>
-                <p>Design, build, and publish stunning websites with AI assistance.</p>
+        <div class="container">
+            <div class="hero">
+                <h1>Your Event Sites</h1>
+                <p>Design, build, and publish branded presentations for any event.</p>
+                <button class="btn btn-lg" id="heroCreateBtn" style="background:#fff;color:var(--color-brand);margin-top:var(--space-6);">
+                    <i class="fas fa-plus"></i> Create New Site
+                </button>
             </div>
-            <button class="btn" id="heroCreateBtn"><i class="fas fa-rocket"></i> Create New Site</button>
-        </div>
 
-        <div class="toolbar">
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="searchInput" placeholder="Search your sites..." />
+            <div class="toolbar">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Search your sites…" />
+                </div>
+                <button class="btn btn-primary" id="createSiteBtn"><i class="fas fa-plus"></i> New Site</button>
             </div>
-        </div>
 
-        <div class="project-grid" id="projectGrid"></div>
+            <div class="project-grid" id="projectGrid"></div>
+        </div>
     </div>
 
     <script>
-        // ================================================================
-        // CLOUDINARY CONFIG
-        // ================================================================
         const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
         const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
 
-        // ================================================================
-        // AUTH
-        // ================================================================
         let token = localStorage.getItem('podiumToken');
+        const loginOverlay = document.getElementById('loginOverlay');
+        const dashboardContent = document.getElementById('dashboardContent');
+
+        function showLogin() {
+            loginOverlay.style.display = 'flex';
+            dashboardContent.style.display = 'none';
+        }
+        function showDashboard() {
+            loginOverlay.style.display = 'none';
+            dashboardContent.style.display = 'block';
+        }
 
         async function apiFetch(endpoint, options = {}) {
-            const headers = {
-                'Content-Type': 'application/json',
-                ...options.headers,
-            };
-            if (token) {
-                headers['Authorization'] = 'Bearer ' + token;
-            }
+            const headers = { 'Content-Type': 'application/json', ...options.headers };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
             const resp = await fetch(endpoint, { ...options, headers });
             if (resp.status === 401) {
-                // Just clear the token, don't reload
                 localStorage.removeItem('podiumToken');
                 token = null;
                 throw new Error('Unauthorized');
             }
             const data = await resp.json();
-            if (!resp.ok) {
-                throw new Error(data.error || 'API error');
-            }
+            if (!resp.ok) throw new Error(data.error || 'API error');
             return data;
         }
 
-        // ================================================================
-        // CLOUDINARY UPLOAD (auto endpoint)
-        // ================================================================
-        async function uploadToCloudinary(content, publicId) {
-            const blob = new Blob([JSON.stringify(content)], { type: 'application/json' });
-            const file = new File([blob], `${publicId}.json`, { type: 'application/json' });
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-            formData.append('public_id', publicId);
-            // ❌ REMOVE overwrite - not allowed
-            // formData.append('overwrite', 'true');
-            // Use auto/upload instead of raw/upload
-            const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
-                method: 'POST',
-                body: formData,
-            });
-            if (!resp.ok) {
-                const err = await resp.text();
-                console.error('Cloudinary error:', err);
-                throw new Error('Upload failed: ' + err);
-            }
-            return (await resp.json()).secure_url;
-        }
-
-        // ================================================================
-        // LOGIN / LOGOUT
-        // ================================================================
         async function login(password) {
             try {
                 const resp = await fetch('/api/login', {
@@ -157,8 +268,7 @@
                 if (data.success) {
                     localStorage.setItem('podiumToken', data.token);
                     token = data.token;
-                    document.getElementById('loginOverlay').style.display = 'none';
-                    document.getElementById('dashboardContent').style.display = 'block';
+                    showDashboard();
                     loadSites();
                 } else {
                     document.getElementById('loginError').style.display = 'block';
@@ -170,100 +280,46 @@
 
         document.getElementById('loginBtn').addEventListener('click', () => login(document.getElementById('passwordInput').value));
         document.getElementById('passwordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(e.target.value); });
+        document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('podiumToken'); location.reload(); });
 
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('podiumToken');
-            location.reload();
-        });
-
-        // ============================================================
-        // BOOT: Always show login form by default
-        // ============================================================
-        const loginOverlay = document.getElementById('loginOverlay');
-        const dashboardContent = document.getElementById('dashboardContent');
-
-        function showLogin() {
-            loginOverlay.style.display = 'flex';
-            dashboardContent.style.display = 'none';
-        }
-
-        function showDashboard() {
-            loginOverlay.style.display = 'none';
-            dashboardContent.style.display = 'block';
-        }
-
-        // Start with login form
-        showLogin();
-
-        // If a token exists, try to verify it
-        if (token) {
-            fetch('/api/verify', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            })
-            .then(resp => {
-                if (resp.ok) {
-                    showDashboard();
-                    loadSites();
-                } else {
-                    // Invalid token – clear and stay on login
-                    localStorage.removeItem('podiumToken');
-                    token = null;
-                    showLogin();
-                }
-            })
-            .catch(() => {
-                // Network error – stay on login
-                localStorage.removeItem('podiumToken');
-                token = null;
-                showLogin();
-            });
-        }
-
-        // ================================================================
-        // SITE MANAGEMENT (list in localStorage, data on Cloudinary)
-        // ================================================================
+        // ===== Sites =====
         let sites = [];
-
         function loadSites() {
-            const saved = localStorage.getItem('podiumSiteList');
-            sites = saved ? JSON.parse(saved) : [];
+            sites = JSON.parse(localStorage.getItem('podiumSiteList') || '[]');
             renderSites();
         }
-
         function saveSiteList() {
             localStorage.setItem('podiumSiteList', JSON.stringify(sites));
         }
 
-        function renderSites(filter = '', search = '') {
+        function renderSites(search = '') {
             const grid = document.getElementById('projectGrid');
             let filtered = [...sites];
-
             if (search.trim()) {
                 const q = search.trim().toLowerCase();
                 filtered = filtered.filter(s => s.name.toLowerCase().includes(q));
             }
-
             filtered.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
             if (filtered.length === 0) {
                 grid.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-folder-open"></i>
-                        <p>No sites yet. Click <strong>Create New Site</strong> to get started.</p>
-                    </div>
-                `;
+                        <h3 class="t-h4" style="margin-bottom:var(--space-2);">No sites yet</h3>
+                        <p class="t-body">Click <strong>Create New Site</strong> to get started.</p>
+                    </div>`;
                 return;
             }
 
             grid.innerHTML = filtered.map(site => `
-                <div class="project-card" data-id="${site.id}">
-                    <div class="card-preview">📄</div>
-                    <div class="card-body">
-                        <div class="title">${site.name}</div>
-                        <div class="meta">Updated ${new Date(site.updatedAt).toLocaleDateString()}</div>
-                        <div class="actions">
-                            <button class="edit-btn"><i class="fas fa-pen"></i> Edit</button>
-                            <button class="delete-btn"><i class="fas fa-trash"></i></button>
+                <div class="project-card animate-slide" data-id="${site.id}">
+                    <div class="project-preview"><i class="fas fa-file-alt"></i></div>
+                    <div class="project-body">
+                        <div class="project-title">${site.name}</div>
+                        <div class="project-meta"><i class="fas fa-clock"></i> Updated ${new Date(site.updatedAt).toLocaleDateString()}</div>
+                        <div class="project-actions">
+                            <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i> Edit</button>
+                            <button class="btn btn-sm btn-ghost delete-btn" style="color:var(--color-danger);"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
                 </div>
@@ -271,67 +327,53 @@
 
             grid.querySelectorAll('.project-card').forEach(card => {
                 const id = card.dataset.id;
-                card.addEventListener('click', (e) => {
-                    if (e.target.closest('button')) return;
-                    openSite(id);
-                });
+                card.addEventListener('click', (e) => { if (!e.target.closest('button')) openSite(id); });
                 card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
                 card.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (!confirm('Delete this site?')) return;
                     sites = sites.filter(s => s.id !== id);
-                    saveSiteList();
-                    loadSites();
+                    saveSiteList(); loadSites();
                 });
             });
         }
 
-        function openSite(id) {
-            window.location.href = `builder.html?site=${id}`;
-        }
+        function openSite(id) { window.location.href = `builder.html?site=${id}`; }
 
         async function createNewSite() {
             const id = 'site-' + Date.now();
             const newSite = {
-                id,
-                name: 'Untitled Site',
-                components: [],
-                tabs: [{ id: 'main', label: 'Main' }],
-                activeTab: 'main',
-                logoUrl: '',
-                bgColor: '#f8fafc',
-                topBarColor: '#ffffff',
-                media: [],
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
+                id, name: 'Untitled Site',
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
             };
-
+            sites.push(newSite);
+            saveSiteList();
+            // Save site JSON to Cloudinary
             try {
-                // Save via server (signed upload)
-                const resp = await fetch('/api/save-site', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,
-                    },
-                    body: JSON.stringify({ siteId: id, siteData: newSite }),
-                });
-                if (!resp.ok) throw new Error((await resp.json()).error || 'Save failed');
-
-                // Add to localStorage site list
-                sites.push({ id, name: newSite.name, createdAt: newSite.createdAt, updatedAt: newSite.updatedAt });
-                saveSiteList();
-
-                window.location.href = `builder.html?site=${id}`;
-            } catch (e) {
-                console.error('Create site error:', e);
-                alert('Failed to create site: ' + e.message);
-            }
+                const blob = new Blob([JSON.stringify({ id, name: newSite.name, components: [], tabs: [{ id: 'main', label: 'Main' }], activeTab: 'main', logoUrl: '', bgColor: '#ffffff', topBarColor: '#ffffff', media: [] })], { type: 'application/json' });
+                const file = new File([blob], `${id}.json`, { type: 'application/json' });
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+                await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
+            } catch (e) { console.error(e); }
+            window.location.href = `builder.html?site=${id}`;
         }
 
         document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
         document.getElementById('heroCreateBtn').addEventListener('click', createNewSite);
-        document.getElementById('searchInput').addEventListener('input', (e) => renderSites('', e.target.value));
+        document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
+
+        // ===== Boot =====
+        showLogin();
+        if (token) {
+            fetch('/api/verify', { headers: { 'Authorization': 'Bearer ' + token } })
+                .then(r => {
+                    if (r.ok) { showDashboard(); loadSites(); }
+                    else { localStorage.removeItem('podiumToken'); token = null; showLogin(); }
+                })
+                .catch(() => { localStorage.removeItem('podiumToken'); token = null; showLogin(); });
+        }
     </script>
 </body>
 </html>

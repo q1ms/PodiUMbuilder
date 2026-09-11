@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Presenter</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css" />
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -500,36 +501,43 @@
             const activeItems = components.filter(c => c.tab === activeTab);
 
             return (
-                <div className="min-h-screen p-6" style={{ background: site.bgColor || '#f8fafc' }}>
-                    <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-8">
-                        {/* Header / Logo */}
-                        <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-200">
-                            {site.logoUrl && <img src={site.logoUrl} alt="Logo" className="max-h-16 w-auto object-contain" />}
-                            <h1 className="text-2xl font-bold text-gray-800">{site.name || 'Event'}</h1>
+                <div style={{ minHeight: '100vh', background: site.bgColor || '#F8F9FA', padding: '32px 16px' }}>
+                    <div style={{ maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+                        {/* Header */}
+                        <div style={{ padding: '32px 40px', borderBottom: '1px solid var(--color-gray-lighter)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            {site.logoUrl && <img src={site.logoUrl} alt="Logo" style={{ maxHeight: 56, width: 'auto' }} />}
+                            <h1 className="t-h2" style={{ margin: 0 }}>{site.name || 'Event'}</h1>
                         </div>
 
-                        {/* Tabs (only show if more than one) */}
+                        {/* Tab nav */}
                         {tabs.length > 1 && (
-                            <div className="flex gap-4 border-b border-gray-200 mb-6">
+                            <div style={{ display: 'flex', gap: 24, padding: '0 40px', borderBottom: '1px solid var(--color-gray-lighter)' }}>
                                 {tabs.map(t => (
                                     <button key={t.id} onClick={() => setActiveTab(t.id)}
-                                        className={`pb-2 text-sm font-medium transition-colors ${activeTab === t.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
-                                        {t.label}
-                                    </button>
+                                        style={{
+                                            background: 'none', border: 'none', cursor: 'pointer',
+                                            padding: '16px 0', fontFamily: 'var(--font-family)',
+                                            fontWeight: 600, fontSize: 'var(--text-sm)',
+                                            color: activeTab === t.id ? 'var(--color-navy)' : 'var(--color-gray-light)',
+                                            borderBottom: activeTab === t.id ? '2px solid var(--color-brand)' : '2px solid transparent',
+                                            transition: 'all 150ms'
+                                        }}>{t.label}</button>
                                 ))}
                             </div>
                         )}
 
-                        {/* Blocks */}
-                        {activeItems.length === 0 ? (
-                            <div className="text-center text-gray-400 py-12">No content on this page.</div>
-                        ) : (
-                            activeItems.map(item => renderBlock(item, audioCtx, site.media))
-                        )}
+                        {/* Content */}
+                        <div style={{ padding: '32px 40px' }}>
+                            {activeItems.length === 0 ? (
+                                <div style={{ textAlign: 'center', color: 'var(--color-gray-light)', padding: '48px 0' }}>
+                                    No content on this page.
+                                </div>
+                            ) : activeItems.map(item => renderBlock(item, audioCtx, site.media))}
+                        </div>
 
                         {/* Footer */}
-                        <div className="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center">
-                            Powered by Podi@UM
+                        <div style={{ padding: '20px 40px', background: 'var(--color-bg-subtle)', textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-gray-light)' }}>
+                            Powered by <strong style={{ color: 'var(--color-brand)' }}>Podi@UM</strong>
                         </div>
                     </div>
                 </div>

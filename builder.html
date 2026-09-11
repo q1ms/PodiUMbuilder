@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Podi @ UM — Layout Builder</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -1371,55 +1373,48 @@
                 return <div className="h-screen flex items-center justify-center">Loading...</div>;
             }
 
-            const topBarStyle = { background: state.topBarColor || '#ffffff' };
+            const handleSaveClick = async () => {
+                if (saving) return;
+                setSaving(true);
+                try { await publishLayout(state, notify); } finally { setSaving(false); }
+            };
 
             return (
                 <div className="h-screen w-screen flex flex-col bg-slate-50 overflow-hidden">
-                    <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0 gap-3" style={topBarStyle}>
-                        <div className="flex items-center gap-3">
-                            <div className="logo-wrapper">
-                                {state.logoUrl && <img src={state.logoUrl} alt="Logo" />}
-                                {!state.logoUrl && <span className="text-xs text-gray-400">No logo</span>}
-                            </div>
-                            <button className="top-btn" onClick={() => document.getElementById('logoInput').click()} disabled={logoUploading}>
-                                {logoUploading ? `⏳ ${logoProgress}%` : '📷 Upload'}
-                            </button>
-                            <input id="logoInput" type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={logoUploading} />
-                            {state.logoUrl && (
-                                <button className="top-btn-icon" onClick={() => dispatch({ type: 'SET_LOGO', url: '' })}>✕</button>
-                            )}
-                            <input type="text" value={state.siteName} onChange={(e) => dispatch({ type: 'SET_NAME', name: e.target.value })}
-                                className="site-name-input" />
+                    <div className="topbar-redesign" style={{
+                        background: '#fff',
+                        borderBottom: '1px solid var(--color-gray-lighter)',
+                        padding: '12px 24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{
+                                width: 36, height: 36,
+                                background: 'linear-gradient(135deg, var(--color-brand), var(--color-navy))',
+                                borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#fff', fontWeight: 800, fontSize: 18
+                            }}>P</div>
+                            <input
+                                type="text"
+                                value={state.siteName}
+                                onChange={(e) => dispatch({ type: 'SET_NAME', name: e.target.value })}
+                                className="input"
+                                style={{ width: 220, fontWeight: 600 }}
+                            />
                         </div>
-                        <div className="flex gap-3 items-center flex-wrap">
-                            <button onClick={() => { if (confirm('Reset the whole layout?')) { dispatch({ type: 'RESET' }); notify('Reset', 'danger'); } }}
-                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
-                                {Icons.reset({ size: 15 })} Reset
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button className="btn btn-ghost btn-icon" onClick={() => document.getElementById('logoInput').click()} title="Upload Logo">
+                                <i className="fas fa-image"></i>
                             </button>
-                            <button onClick={() => { setPreviewMode(!previewMode); notify(previewMode ? 'Editing' : 'Preview'); }}
-                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
-                                {Icons.eye({ size: 15 })} {previewMode ? 'Edit' : 'Preview'}
+                            <input id="logoInput" type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} style={{ display: 'none' }} />
+                            <button className="btn btn-secondary" onClick={() => setPreviewMode(!previewMode)}>
+                                <i className={`fas ${previewMode ? 'fa-pencil' : 'fa-eye'}`}></i> {previewMode ? 'Edit' : 'Preview'}
                             </button>
-                            <button
-                                onClick={async () => {
-                                    if (saving) return;
-                                    setSaving(true);
-                                    try { await publishLayout(state, notify); } finally { setSaving(false); }
-                                }}
-                                disabled={saving}
-                                className={`rounded-full px-4 py-2 text-sm font-medium text-white transition-colors flex items-center gap-2 ${saving ? 'bg-emerald-400 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-                                {saving ? (
-                                    <>
-                                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                        Saving...
-                                    </>
-                                ) : (
-                                    <>{Icons.save({ size: 15 })} Save</>
-                                )}
-                            </button>
-                            <button onClick={() => window.location.href = '/dashboard.html'}
-                                className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
-                                <i className="fas fa-arrow-left"></i> Dashboard
+                            <button className="btn btn-primary" onClick={handleSaveClick} disabled={saving}>
+                                {saving ? <><span className="spinner"></span> Saving…</> : <><i className="fas fa-check"></i> Save</>}
                             </button>
                         </div>
                     </div>
