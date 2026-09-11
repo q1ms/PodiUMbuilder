@@ -249,7 +249,7 @@
 
         async function createNewSite() {
             const id = 'site-' + Date.now();
-            const siteData = {
+            const newSite = {
                 id,
                 name: 'Untitled Site',
                 components: [],
@@ -264,26 +264,25 @@
             };
 
             try {
-                // Upload to Cloudinary - get the URL
-                const cloudUrl = await uploadToCloudinary(siteData, id);
-                console.log('✅ Site uploaded to Cloudinary:', cloudUrl);
+                // Save via server (signed upload)
+                const resp = await fetch('/api/save-site', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token,
+                    },
+                    body: JSON.stringify({ siteId: id, siteData: newSite }),
+                });
+                if (!resp.ok) throw new Error((await resp.json()).error || 'Save failed');
 
-                // Save site + URL in localStorage
-                const newSite = {
-                    id,
-                    name: siteData.name,
-                    cloudUrl: cloudUrl,
-                    createdAt: siteData.createdAt,
-                    updatedAt: siteData.updatedAt,
-                };
-                sites.push(newSite);
+                // Add to localStorage site list
+                sites.push({ id, name: newSite.name, createdAt: newSite.createdAt, updatedAt: newSite.updatedAt });
                 saveSiteList();
 
-                // Open builder
                 window.location.href = `builder.html?site=${id}`;
             } catch (e) {
-                console.error('❌ Upload failed:', e);
-                alert('Cloud save failed: ' + e.message);
+                console.error('Create site error:', e);
+                alert('Failed to create site: ' + e.message);
             }
         }
 

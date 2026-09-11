@@ -248,9 +248,11 @@
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
-                const siteUrl = params.get('site');
-                if (!siteUrl) { setError('No site URL provided.'); setLoading(false); return; }
-                fetch(siteUrl + '?t=' + Date.now())
+                const siteId = params.get('site');
+                if (!siteId) { setError('No site ID provided.'); setLoading(false); return; }
+
+                // Load via stable URL from the server
+                fetch(`/api/load-site/${siteId}`)
                     .then(r => { if (!r.ok) throw new Error('Failed to load'); return r.json(); })
                     .then(data => {
                         setSite(data);
