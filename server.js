@@ -12,6 +12,19 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// ===== AUTH MIDDLEWARE =====
+function authenticate(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+    const token = authHeader.split(' ')[1];
+    try {
+        jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (e) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+}
+
 // ===== SAVE SITE (signed Cloudinary upload with overwrite) =====
 app.post('/api/save-site', async (req, res) => {
     try {
