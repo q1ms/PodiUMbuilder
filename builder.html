@@ -442,16 +442,60 @@
         // ================================================================
         async function saveSite(state) {
             try {
-                const { _id, siteId, ...update } = state;
-                const id = _id || siteId;
-                if (!id) return;
-                await apiFetch(`/api/sites/${id}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(update),
-                });
+                const siteData = {
+                    id: state.siteId,
+                    name: state.siteName,
+                    components: state.components,
+                    tabs: state.tabs,
+                    activeTab: state.activeTab,
+                    logoUrl: state.logoUrl,
+                    bgColor: state.bgColor,
+                    topBarColor: state.topBarColor,
+                    media: state.media,
+                    updatedAt: new Date().toISOString(),
+                };
+                // Upload site data to Cloudinary
+                await uploadToCloudinary(siteData, state.siteId);
+                // Update manifest
+                const manifestUrl = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/manifest.json`;
+                let manifest = { sites: [] };
+                try {
+                    const resp = await fetch(manifestUrl + '?t=' + Date.now());
+                    if (resp.ok) manifest = await resp.json();
+                } catch (e) {}
+                const idx = manifest.sites.findIndex(s => s.id === state.siteId);
+                if (idx !== -1) {
+                    manifest.sites[idx].name = state.siteName;
+                    manifest.sites[idx].updatedAt = new Date().toISOString();
+                } else {
+                    manifest.sites.push({
+                        id: state.siteId,
+                        name: state.siteName,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    });
+                }
+                await uploadToCloudinary(manifest, 'manifest');
             } catch (e) {
-                console.error('Auto-save failed:', e);
+                console.error('Save failed:', e);
             }
+        }
+
+        async function uploadToCloudinary(content, publicId) {
+            const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' });
+            const file = new File([blob], `${publicId}.json`, { type: 'application/json' });
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+            formData.append('public_id', publicId);
+            formData.append('resource_type', 'raw');
+            formData.append('overwrite', 'true');
+            const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+            if (!resp.ok) throw new Error('Upload failed');
+            return (await resp.json()).secure_url;
         }
 
         // ================================================================
@@ -1072,24 +1116,24 @@
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
 
-            // Load site from server on mount
+            // Load site from Cloudinary on mount
             useEffect(() => {
                 async function loadSite() {
                     if (siteId) {
                         try {
-                            const sites = await apiFetch('/api/sites');
-                            const site = sites.find(s => s._id === siteId || s.id === siteId);
-                            if (site) {
+                            const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/${siteId}.json?t=${Date.now()}`;
+                            const resp = await fetch(url, { cache: 'no-cache' });
+                            if (resp.ok) {
+                                const site = await resp.json();
                                 dispatch({ type: 'LOAD', state: site });
                             } else {
-                                // Site not found, redirect to dashboard
                                 window.location.href = '/dashboard.html';
                             }
                         } catch (e) {
                             console.error('Failed to load site', e);
+                            window.location.href = '/dashboard.html';
                         }
                     } else {
-                        // No site ID, redirect to dashboard
                         window.location.href = '/dashboard.html';
                     }
                     setLoading(false);
