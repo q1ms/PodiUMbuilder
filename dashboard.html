@@ -313,11 +313,16 @@
 
             grid.innerHTML = filtered.map(site => `
                 <div class="project-card animate-slide" data-id="${site.id}">
-                    <div class="project-preview"><i class="fas fa-file-alt"></i></div>
+                    <div class="project-preview" data-preview-id="${site.id}">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
                     <div class="project-body">
                         <div class="project-title">${site.name}</div>
                         <div class="project-meta"><i class="fas fa-clock"></i> Updated ${new Date(site.updatedAt).toLocaleDateString()}</div>
                         <div class="project-actions">
+                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}" title="Open presenter in new tab">
+                                <i class="fas fa-external-link-alt"></i> Launch
+                            </button>
                             <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i> Edit</button>
                             <button class="btn btn-sm btn-ghost delete-btn" style="color:var(--color-danger);"><i class="fas fa-trash"></i></button>
                         </div>
@@ -327,7 +332,12 @@
 
             grid.querySelectorAll('.project-card').forEach(card => {
                 const id = card.dataset.id;
+                renderThumbnail(id);
                 card.addEventListener('click', (e) => { if (!e.target.closest('button')) openSite(id); });
+                card.querySelector('.launch-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.open(`viewer.html?site=${id}`, '_blank');
+                });
                 card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
                 card.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -336,6 +346,51 @@
                     saveSiteList(); loadSites();
                 });
             });
+        }
+
+        async function renderThumbnail(siteId) {
+            try {
+                const resp = await fetch(`/api/load-site/${siteId}?t=${Date.now()}`);
+                if (!resp.ok) return;
+                const site = await resp.json();
+                const el = document.querySelector(`[data-preview-id="${siteId}"]`);
+                if (!el) return;
+
+                // Render a mini preview
+                el.innerHTML = `
+                    <div style="
+                        width: 100%; height: 100%;
+                        background: ${site.bgColor || '#F8F9FA'};
+                        display: flex; flex-direction: column; align-items: center;
+                        padding: 12px; gap: 6px; overflow: hidden;
+                    ">
+                        ${site.logoUrl ? `<img src="${site.logoUrl}" style="max-height:24px; max-width:80%; object-fit:contain;" />` : ''}
+                        <div style="font-weight:700; color:#11233B; font-size:11px; text-align:center; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${site.name || 'Untitled'}
+                        </div>
+                        <div style="
+                            width: 85%; height: 60%;
+                            background: #fff;
+                            border-radius: 6px;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+                            display: flex; flex-direction: column; gap: 3px;
+                            padding: 6px;
+                            overflow: hidden;
+                        ">
+                            ${(site.components || []).slice(0, 4).map(c => {
+                                if (c.type === 'SoundButton') return `<div style="background:#11233B; height:8px; border-radius:4px;"></div>`;
+                                if (c.type === 'Playlist') return `<div style="background:#0090A8; height:8px; border-radius:4px;"></div>`;
+                                if (c.type === 'ProgressControls') return `<div style="background:#E5E7EB; height:5px; border-radius:2px;"></div>`;
+                                if (c.type === 'Divider') return `<div style="background:#D1D5DB; height:1px; margin:2px 0;"></div>`;
+                                if (c.type === 'SlidesManager') return `<div style="background:#F3F4F6; height:20px; border-radius:4px;"></div>`;
+                                return `<div style="background:#E5E7EB; height:8px; border-radius:4px;"></div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.warn('Thumbnail load failed:', e);
+            }
         }
 
         function openSite(id) { window.location.href = `builder.html?site=${id}`; }
