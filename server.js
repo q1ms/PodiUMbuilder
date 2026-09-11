@@ -82,6 +82,59 @@ app.get('/api/load-site/:siteId', async (req, res) => {
     }
 });
 
+// ===== SAVE MANIFEST (list of all sites) =====
+app.post('/api/save-manifest', authenticate, async (req, res) => {
+    try {
+        const { sites } = req.body;
+        if (!Array.isArray(sites)) return res.status(400).json({ error: 'sites must be array' });
+
+        const timestamp = Math.floor(Date.now() / 1000);
+        const publicId = 'podium-sites/manifest';
+
+        const paramsToSign = `invalidate=true&overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
+        const signature = crypto
+            .createHash('sha1')
+            .update(paramsToSign + process.env.CLOUDINARY_API_SECRET)
+            .digest('hex');
+
+        const formData = new FormData();
+        const blob = new Blob([JSON.stringify({ sites, updatedAt: new Date().toISOString() })], { type: 'application/json' });
+        formData.append('file', blob, 'manifest.json');
+        formData.append('api_key', process.env.CLOUDINARY_API_KEY);
+        formData.append('timestamp', timestamp);
+        formData.append('public_id', publicId);
+        formData.append('signature', signature);
+        formData.append('overwrite', 'true');
+        formData.append('invalidate', 'true');
+
+        const url = `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload`;
+        const resp = await fetch(url, { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok) return res.status(500).json({ error: data.error?.message || 'Upload failed' });
+        res.json({ success: true, url: data.secure_url });
+    } catch (err) {
+        console.error('Save manifest error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ===== LOAD MANIFEST =====
+app.get('/api/load-manifest', async (req, res) => {
+    try {
+        const url = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/podium-sites/manifest.json?t=${Date.now()}`;
+        const resp = await fetch(url, {
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+        if (!resp.ok) return res.json({ sites: [] });
+        const data = await resp.json();
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(data);
+    } catch (err) {
+        res.json({ sites: [] });
+    }
+});
+
 // Login
 app.post('/api/login', (req, res) => {
     const { password } = req.body;

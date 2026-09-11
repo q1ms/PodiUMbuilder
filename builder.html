@@ -497,6 +497,7 @@
                     updatedAt: new Date().toISOString(),
                 };
 
+                // Save site
                 const resp = await fetch('/api/save-site', {
                     method: 'POST',
                     headers: {
@@ -507,27 +508,40 @@
                 });
                 if (!resp.ok) throw new Error('Save failed');
 
-                // ✅ SYNC to localStorage (dashboard list)
-                const siteList = JSON.parse(localStorage.getItem('podiumSiteList') || '[]');
-                const idx = siteList.findIndex(s => s.id === state.siteId);
-                if (idx !== -1) {
-                    siteList[idx].name = state.siteName;
-                    siteList[idx].updatedAt = new Date().toISOString();
-                    siteList[idx].logoUrl = state.logoUrl;
-                    siteList[idx].bgColor = state.bgColor;
-                } else {
-                    siteList.push({
-                        id: state.siteId,
-                        name: state.siteName,
-                        logoUrl: state.logoUrl,
-                        bgColor: state.bgColor,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
+                // Update manifest (loaded from server, then re-saved)
+                try {
+                    const manifestResp = await fetch('/api/load-manifest?t=' + Date.now());
+                    const manifest = await manifestResp.json();
+                    const siteList = manifest.sites || [];
+                    const idx = siteList.findIndex(s => s.id === state.siteId);
+                    if (idx !== -1) {
+                        siteList[idx].name = state.siteName;
+                        siteList[idx].updatedAt = new Date().toISOString();
+                        siteList[idx].logoUrl = state.logoUrl;
+                        siteList[idx].bgColor = state.bgColor;
+                    } else {
+                        siteList.push({
+                            id: state.siteId,
+                            name: state.siteName,
+                            logoUrl: state.logoUrl,
+                            bgColor: state.bgColor,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                        });
+                    }
+                    await fetch('/api/save-manifest', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token,
+                        },
+                        body: JSON.stringify({ sites: siteList }),
                     });
+                } catch (e) {
+                    console.warn('Manifest update failed:', e);
                 }
-                localStorage.setItem('podiumSiteList', JSON.stringify(siteList));
 
-                console.log('✅ Saved and synced to dashboard');
+                console.log('✅ Saved and synced to server');
             } catch (e) {
                 console.error('Save failed:', e);
             }

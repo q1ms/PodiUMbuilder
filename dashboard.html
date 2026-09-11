@@ -282,14 +282,35 @@
         document.getElementById('passwordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(e.target.value); });
         document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('podiumToken'); location.reload(); });
 
-        // ===== Sites =====
+        // ===== Sites (loaded from server, shared across all devices) =====
         let sites = [];
-        function loadSites() {
-            sites = JSON.parse(localStorage.getItem('podiumSiteList') || '[]');
+        async function loadSites() {
+            try {
+                const resp = await fetch('/api/load-manifest?t=' + Date.now(), {
+                    cache: 'no-store',
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+                });
+                const data = await resp.json();
+                sites = data.sites || [];
+            } catch (e) {
+                console.warn('Failed to load sites:', e);
+                sites = [];
+            }
             renderSites();
         }
-        function saveSiteList() {
-            localStorage.setItem('podiumSiteList', JSON.stringify(sites));
+        async function saveSiteList() {
+            try {
+                await fetch('/api/save-manifest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token,
+                    },
+                    body: JSON.stringify({ sites }),
+                });
+            } catch (e) {
+                console.error('Failed to save manifest:', e);
+            }
         }
 
         function renderSites(search = '') {
@@ -339,11 +360,12 @@
                     window.open(`viewer.html?site=${id}`, '_blank');
                 });
                 card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
-                card.querySelector('.delete-btn').addEventListener('click', (e) => {
+                card.querySelector('.delete-btn').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     if (!confirm('Delete this site?')) return;
                     sites = sites.filter(s => s.id !== id);
-                    saveSiteList(); loadSites();
+                    await saveSiteList();   // ← now saves to server
+                    renderSites();
                 });
             });
         }
@@ -398,20 +420,44 @@
         async function createNewSite() {
             const id = 'site-' + Date.now();
             const newSite = {
-                id, name: 'Untitled Site',
-                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+                id,
+                name: 'Untitled Site',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
             };
+
+            // Add to manifest
             sites.push(newSite);
-            saveSiteList();
-            // Save site JSON to Cloudinary
+            await saveSiteList();
+
+            // Save initial empty site JSON
             try {
-                const blob = new Blob([JSON.stringify({ id, name: newSite.name, components: [], tabs: [{ id: 'main', label: 'Main' }], activeTab: 'main', logoUrl: '', bgColor: '#ffffff', topBarColor: '#ffffff', media: [] })], { type: 'application/json' });
-                const file = new File([blob], `${id}.json`, { type: 'application/json' });
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-                await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
-            } catch (e) { console.error(e); }
+                await fetch('/api/save-site', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token,
+                    },
+                    body: JSON.stringify({
+                        siteId: id,
+                        siteData: {
+                            id,
+                            name: newSite.name,
+                            components: [],
+                            tabs: [{ id: 'main', label: 'Main' }],
+                            activeTab: 'main',
+                            logoUrl: '',
+                            bgColor: '#ffffff',
+                            topBarColor: '#ffffff',
+                            media: [],
+                            updatedAt: new Date().toISOString(),
+                        }
+                    }),
+                });
+            } catch (e) {
+                console.error('Failed to save initial site:', e);
+            }
+
             window.location.href = `builder.html?site=${id}`;
         }
 
