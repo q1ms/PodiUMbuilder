@@ -1136,20 +1136,117 @@
         // ================================================================
         async function publishLayout(state, notify) {
             try {
-                const json = JSON.stringify(state, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
-                const file = new File([blob], `${state.siteName || 'layout'}.json`, { type: 'application/json' });
-                const url = await uploadToCloudinaryWithProgress(file, (p) => {});
-                // Optionally, we can store the cloudUrl in the site as well.
-                // But we'll just notify the user.
-                const shareUrl = `${window.location.origin}${window.location.pathname}?load=${encodeURIComponent(url)}`;
-                navigator.clipboard.writeText(shareUrl).catch(() => {});
-                notify(`✅ Published! Share: ${shareUrl}`, 'success');
+                const siteData = {
+                    id: state.siteId,
+                    name: state.siteName,
+                    components: state.components,
+                    tabs: state.tabs,
+                    activeTab: state.activeTab,
+                    logoUrl: state.logoUrl,
+                    bgColor: state.bgColor,
+                    topBarColor: state.topBarColor,
+                    media: state.media,
+                    publishedAt: new Date().toISOString(),
+                };
+
+                // Upload to Cloudinary (auto/upload, no overwrite)
+                const blob = new Blob([JSON.stringify(siteData)], { type: 'application/json' });
+                const file = new File([blob], `${state.siteName || 'site'}-${Date.now()}.json`, { type: 'application/json' });
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+                const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!resp.ok) throw new Error('Cloudinary upload failed');
+                const cloudUrl = (await resp.json()).secure_url;
+
+                // Build the shareable viewer URL
+                const baseUrl = window.location.href.split('?')[0].replace('builder.html', '');
+                const shareUrl = `${baseUrl}viewer.html?site=${encodeURIComponent(cloudUrl)}`;
+
+                // Show the modal
+                showPublishModal(shareUrl, cloudUrl, notify);
                 return shareUrl;
             } catch (e) {
                 notify('❌ Publish failed: ' + e.message, 'danger');
                 return null;
             }
+        }
+
+        // ===== Modal helper =====
+        function showPublishModal(shareUrl, cloudUrl, notify) {
+            // Remove existing modal if any
+            const existing = document.getElementById('publishModal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'publishModal';
+            modal.style.cssText = `
+                position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                display: flex; align-items: center; justify-content: center;
+                z-index: 99999; font-family: inherit;
+            `;
+            modal.innerHTML = `
+                <div style="background:white; border-radius:16px; padding:28px; max-width:520px; width:90%;
+                            box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: modalIn 0.25s ease;">
+                    <style>@keyframes modalIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }</style>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <h2 style="font-size:1.5rem; font-weight:700; color:#0d9488;">✅ Published!</h2>
+                        <button id="closePublishModal" style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:#94a3b8;">✕</button>
+                    </div>
+                    <p style="opacity:0.6; margin-bottom:16px; font-size:0.9rem;">Your presenter page is live. Share this link with anyone.</p>
+
+                    <label style="font-size:0.75rem; font-weight:600; color:#64748b; display:block; margin-bottom:6px;">SHAREABLE PRESENTER LINK</label>
+                    <div style="display:flex; gap:8px; margin-bottom:14px;">
+                        <input id="shareUrlInput" type="text" value="${shareUrl}" readonly
+                            style="flex:1; padding:10px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.8rem; background:#f8fafc; color:#1a1a2e;" />
+                        <button id="copyShareUrlBtn" style="background:#0d9488; color:white; border:none; border-radius:8px; padding:0 16px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                            📋 Copy
+                        </button>
+                    </div>
+
+                    <label style="font-size:0.75rem; font-weight:600; color:#64748b; display:block; margin-bottom:6px;">DIRECT DATA URL (backup)</label>
+                    <div style="display:flex; gap:8px; margin-bottom:18px;">
+                        <input type="text" value="${cloudUrl}" readonly
+                            style="flex:1; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.7rem; background:#f8fafc; color:#94a3b8;" />
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <button id="openViewerBtn" style="flex:1; background:#0033a0; color:white; border:none; border-radius:10px; padding:12px; font-weight:600; cursor:pointer; font-size:0.9rem;">
+                            🔗 Open Presenter
+                        </button>
+                        <button id="closePublishBtn" style="flex:1; background:#e2e8f0; color:#1a1a2e; border:none; border-radius:10px; padding:12px; font-weight:600; cursor:pointer; font-size:0.9rem;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Wire up buttons
+            document.getElementById('copyShareUrlBtn').onclick = () => {
+                const input = document.getElementById('shareUrlInput');
+                input.select();
+                input.setSelectionRange(0, 99999);
+                navigator.clipboard.writeText(input.value).then(() => {
+                    document.getElementById('copyShareUrlBtn').textContent = '✅ Copied!';
+                    setTimeout(() => { document.getElementById('copyShareUrlBtn').textContent = '📋 Copy'; }, 1500);
+                }).catch(() => {
+                    document.execCommand('copy');
+                    notify('Copied to clipboard', 'success');
+                });
+            };
+
+            document.getElementById('openViewerBtn').onclick = () => {
+                window.open(shareUrl, '_blank');
+            };
+
+            document.getElementById('closePublishModal').onclick = () => modal.remove();
+            document.getElementById('closePublishBtn').onclick = () => modal.remove();
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         }
 
         // ================================================================
