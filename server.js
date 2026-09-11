@@ -22,7 +22,7 @@ app.post('/api/save-site', async (req, res) => {
         const publicId = `podium-sites/${siteId}`;
 
         // Generate Cloudinary signature
-        const paramsToSign = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
+        const paramsToSign = `invalidate=true&overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
         const signature = crypto
             .createHash('sha1')
             .update(paramsToSign + process.env.CLOUDINARY_API_SECRET)
@@ -37,6 +37,7 @@ app.post('/api/save-site', async (req, res) => {
         formData.append('public_id', publicId);
         formData.append('signature', signature);
         formData.append('overwrite', 'true');
+        formData.append('invalidate', 'true');
 
         // Upload to Cloudinary (raw type for JSON)
         const url = `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload`;
@@ -60,11 +61,21 @@ app.get('/api/load-site/:siteId', async (req, res) => {
     try {
         const { siteId } = req.params;
         const publicId = `podium-sites/${siteId}`;
-        // Public URL format for raw uploads
-        const url = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${publicId}.json`;
-        const resp = await fetch(url + '?t=' + Date.now());
+        const url = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${publicId}.json?t=${Date.now()}`;
+
+        const resp = await fetch(url, {
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
         if (!resp.ok) return res.status(404).json({ error: 'Site not found' });
         const data = await resp.json();
+
+        // Prevent browser from caching the response
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });
