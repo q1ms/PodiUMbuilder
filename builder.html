@@ -170,7 +170,7 @@
                 };
             }, []);
 
-            const fadeTo = (targetVol, duration = 1000, callback) => {
+            const fadeTo = (targetVol, duration = 800, callback) => {
                 const audio = audioRef.current;
                 if (!audio) return;
                 if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
@@ -183,9 +183,10 @@
                 fadeIntervalRef.current = setInterval(() => {
                     const elapsed = Date.now() - startTime;
                     const ratio = Math.min(1, elapsed / duration);
-                    audio.volume = startVol + (targetVol - startVol) * ratio;
+                    audio.volume = Math.max(0, Math.min(1, startVol + (targetVol - startVol) * ratio));
                     if (ratio >= 1) {
                         clearInterval(fadeIntervalRef.current);
+                        fadeIntervalRef.current = null;
                         if (callback) callback();
                     }
                 }, stepTime);
@@ -197,13 +198,11 @@
                 if (audio.src !== url) {
                     audio.src = url;
                     audio.load();
-                    audio.volume = 0; // start at 0 for fade in
-                } else {
-                    audio.volume = 0;
                 }
+                audio.volume = 0;
                 audio.play().then(() => {
                     setIsPlaying(true);
-                    fadeTo(volume, 800);
+                    fadeTo(volume, 800); // fade IN
                 }).catch(() => {});
                 setAudioUrl(url);
             };
@@ -211,9 +210,21 @@
             const pause = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                fadeTo(0, 600, () => {
+                fadeTo(0, 600, () => {   // fade OUT
                     audio.pause();
                     setIsPlaying(false);
+                });
+            };
+
+            const stopAll = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                fadeTo(0, 600, () => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    setIsPlaying(false);
+                    setProgress(0);
+                    setAudioUrl(null);
                 });
             };
 
@@ -269,6 +280,7 @@
                     seek,
                     changeVolume,
                     playBeep,
+                    stopAll,
                 }}>
                     {children}
                 </AudioContext.Provider>
@@ -842,17 +854,21 @@
                 case 'CustomUploads': return <CustomUploadsComponent id={id} props={props} dispatch={dispatch} notify={notify} />;
                 case 'SlidesManager':
                     return (
-                        <div>
-                            <Title /><Sub />
-                            <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-sm text-gray-400 mb-3 hover:border-gray-400 transition-colors cursor-pointer relative"
-                                style={{ borderColor: props.color || '#d1d5db' }}>
-                                <input type="file" multiple accept="image/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onClick={(e) => e.stopPropagation()} />
-                                Upload PDF / PNG / JPEG
+                        <div className="mb-4">
+                            <div className="text-sm font-semibold text-gray-700 mb-1">{props.title || 'Slides'}</div>
+                            <div className="text-xs text-gray-400 mb-3">
+                                Slides are added by the presenter during the live event. Users upload them in the viewer.
                             </div>
-                            <div className="flex gap-2">
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                    <div key={i} className={`w-14 h-9 rounded-md ${i === 0 ? 'bg-gray-800' : 'bg-gray-200'}`}></div>
-                                ))}
+                            <div style={{
+                                border: '2px dashed #E5E7EB',
+                                borderRadius: 12,
+                                padding: '24px',
+                                textAlign: 'center',
+                                color: '#9CA3AF',
+                                fontSize: 14
+                            }}>
+                                <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
+                                <div>Upload enabled on the presenter page</div>
                             </div>
                         </div>
                     );
@@ -872,7 +888,7 @@
                                 <span>{audioCtx.duration ? formatTime(audioCtx.duration) : '0:00'}</span>
                             </div>
 
-                            {/* Volume slider - 90% width, centered */}
+                            {/* Volume slider - 85% width, centered */}
                             <div className="flex items-center justify-center gap-3 mt-4">
                                 <span className="text-sm text-gray-500">🔊</span>
                                 <input type="range" min="0" max="100" value={audioCtx.volume * 100}
@@ -882,13 +898,13 @@
                                 <span className="text-xs text-gray-400 w-8 text-right">{Math.round(audioCtx.volume * 100)}%</span>
                             </div>
 
-                            {/* Play/Pause button - 75% width, centered */}
+                            {/* Stop All Sounds button - 75% width, centered */}
                             <div className="flex justify-center mt-3">
                                 <button
-                                    onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
-                                    style={{ width: '75%', background: props.color || '#0d9488' }}
+                                    onClick={() => audioCtx.stopAll && audioCtx.stopAll()}
+                                    style={{ width: '75%', background: '#EF4444' }}
                                     className="text-base font-semibold text-white hover:opacity-90 px-6 py-3 rounded-full transition-colors">
-                                    {audioCtx.isPlaying ? '⏸ Pause' : '▶ Play'}
+                                    ⏹ Stop All Sounds
                                 </button>
                             </div>
                         </div>
@@ -1382,38 +1398,77 @@
             return (
                 <div className="h-screen w-screen flex flex-col bg-slate-50 overflow-hidden">
                     <div className="topbar-redesign" style={{
-                        background: '#fff',
+                        background: state.topBarColor || '#ffffff',
                         borderBottom: '1px solid var(--color-gray-lighter)',
                         padding: '12px 24px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '16px',
+                        position: 'relative'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{
-                                width: 36, height: 36,
-                                background: 'linear-gradient(135deg, var(--color-brand), var(--color-navy))',
-                                borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: '#fff', fontWeight: 800, fontSize: 18
-                            }}>P</div>
+                        {/* LEFT: Back to Dashboard */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                            <a href="/dashboard.html" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
+                                <i className="fas fa-arrow-left"></i> Dashboard
+                            </a>
+                        </div>
+
+                        {/* CENTER: Logo (if uploaded) + Site name */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '16px',
+                            flex: 1,
+                            minWidth: 0
+                        }}>
+                            {state.logoUrl && (
+                                <img
+                                    src={state.logoUrl}
+                                    alt="Logo"
+                                    style={{ maxHeight: 40, width: 'auto', objectFit: 'contain' }}
+                                />
+                            )}
                             <input
                                 type="text"
                                 value={state.siteName}
                                 onChange={(e) => dispatch({ type: 'SET_NAME', name: e.target.value })}
                                 className="input"
-                                style={{ width: 220, fontWeight: 600 }}
+                                style={{ width: 260, fontWeight: 600, textAlign: 'center' }}
                             />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <button className="btn btn-ghost btn-icon" onClick={() => document.getElementById('logoInput').click()} title="Upload Logo">
-                                <i className="fas fa-image"></i>
+
+                        {/* RIGHT: Actions */}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => document.getElementById('logoInput').click()}
+                                disabled={logoUploading}
+                            >
+                                {logoUploading ? <><span className="spinner"></span> Uploading…</> : <><i className="fas fa-image"></i> Upload Logo</>}
                             </button>
-                            <input id="logoInput" type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} style={{ display: 'none' }} />
-                            <button className="btn btn-secondary" onClick={() => setPreviewMode(!previewMode)}>
+                            <input
+                                id="logoInput"
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={handleLogoUpload}
+                                disabled={logoUploading}
+                            />
+                            {state.logoUrl && (
+                                <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => dispatch({ type: 'SET_LOGO', url: '' })}
+                                    title="Remove logo"
+                                >
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            )}
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreviewMode(!previewMode)}>
                                 <i className={`fas ${previewMode ? 'fa-pencil' : 'fa-eye'}`}></i> {previewMode ? 'Edit' : 'Preview'}
                             </button>
-                            <button className="btn btn-primary" onClick={handleSaveClick} disabled={saving}>
+                            <button className="btn btn-primary btn-sm" onClick={handleSaveClick} disabled={saving}>
                                 {saving ? <><span className="spinner"></span> Saving…</> : <><i className="fas fa-check"></i> Save</>}
                             </button>
                         </div>

@@ -56,7 +56,7 @@
                 };
             }, []);
 
-            const fadeTo = (targetVol, duration = 1000, callback) => {
+            const fadeTo = (targetVol, duration = 800, callback) => {
                 const audio = audioRef.current;
                 if (!audio) return;
                 if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
@@ -69,9 +69,10 @@
                 fadeIntervalRef.current = setInterval(() => {
                     const elapsed = Date.now() - startTime;
                     const ratio = Math.min(1, elapsed / duration);
-                    audio.volume = startVol + (targetVol - startVol) * ratio;
+                    audio.volume = Math.max(0, Math.min(1, startVol + (targetVol - startVol) * ratio));
                     if (ratio >= 1) {
                         clearInterval(fadeIntervalRef.current);
+                        fadeIntervalRef.current = null;
                         if (callback) callback();
                     }
                 }, stepTime);
@@ -83,13 +84,11 @@
                 if (audio.src !== url) {
                     audio.src = url;
                     audio.load();
-                    audio.volume = 0; // start at 0 for fade in
-                } else {
-                    audio.volume = 0;
                 }
+                audio.volume = 0;
                 audio.play().then(() => {
                     setIsPlaying(true);
-                    fadeTo(volume, 800);
+                    fadeTo(volume, 800); // fade IN
                 }).catch(() => {});
                 setAudioUrl(url);
             };
@@ -97,9 +96,20 @@
             const pause = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                fadeTo(0, 600, () => {
+                fadeTo(0, 600, () => {   // fade OUT
                     audio.pause();
                     setIsPlaying(false);
+                });
+            };
+            const stopAll = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                fadeTo(0, 600, () => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    setIsPlaying(false);
+                    setProgress(0);
+                    setAudioUrl(null);
                 });
             };
             const togglePlay = (url) => {
@@ -130,7 +140,7 @@
             };
 
             return (
-                <AudioContext.Provider value={{ audioUrl, isPlaying, progress, duration, volume, play, pause, togglePlay, seek, changeVolume, playBeep }}>
+                <AudioContext.Provider value={{ audioUrl, isPlaying, progress, duration, volume, play, pause, togglePlay, seek, changeVolume, playBeep, stopAll }}>
                     {children}
                 </AudioContext.Provider>
             );
@@ -393,7 +403,7 @@
                     <span>{audioCtx.duration ? formatTime(audioCtx.duration) : '0:00'}</span>
                 </div>
 
-                {/* Volume slider - 90% width, centered */}
+                {/* Volume slider - 85% width, centered */}
                 <div className="flex items-center justify-center gap-3 mt-4">
                     <span className="text-sm text-gray-500">🔊</span>
                     <input type="range" min="0" max="100" value={audioCtx.volume * 100}
@@ -403,13 +413,13 @@
                     <span className="text-xs text-gray-400 w-8 text-right">{Math.round(audioCtx.volume * 100)}%</span>
                 </div>
 
-                {/* Play/Pause button - 75% width, centered */}
+                {/* Stop All Sounds button - 75% width, centered */}
                 <div className="flex justify-center mt-3">
                     <button
-                        onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
-                        style={{ width: '75%', background: props.color || '#0d9488' }}
+                        onClick={() => audioCtx.stopAll && audioCtx.stopAll()}
+                        style={{ width: '75%', background: '#EF4444' }}
                         className="text-base font-semibold text-white hover:opacity-90 px-6 py-3 rounded-full transition-colors">
-                        {audioCtx.isPlaying ? '⏸ Pause' : '▶ Play'}
+                        ⏹ Stop All Sounds
                     </button>
                 </div>
             </div>
@@ -492,6 +502,11 @@
                 return () => clearInterval(interval);
             }, [site?.updatedAt]);
 
+            // Set the browser tab title to the site name
+            useEffect(() => {
+                if (site?.name) document.title = site.name;
+            }, [site?.name]);
+
             if (loading) return <div className="flex items-center justify-center h-screen text-gray-400">Loading…</div>;
             if (error) return <div className="flex items-center justify-center h-screen text-red-500">Error: {error}</div>;
             if (!site) return null;
@@ -502,24 +517,46 @@
 
             return (
                 <div style={{ minHeight: '100vh', background: site.bgColor || '#F8F9FA', padding: '32px 16px' }}>
-                    <div style={{ maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-                        {/* Header */}
-                        <div style={{ padding: '32px 40px', borderBottom: '1px solid var(--color-gray-lighter)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            {site.logoUrl && <img src={site.logoUrl} alt="Logo" style={{ maxHeight: 56, width: 'auto' }} />}
-                            <h1 className="t-h2" style={{ margin: 0 }}>{site.name || 'Event'}</h1>
+                    <div style={{ maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 24, boxShadow: '0 20px 50px rgba(17, 35, 59, 0.12)', overflow: 'hidden' }}>
+                        {/* Header - CENTERED logo + name */}
+                        <div style={{
+                            padding: '32px 40px',
+                            borderBottom: '1px solid #E5E7EB',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '12px',
+                            textAlign: 'center'
+                        }}>
+                            {site.logoUrl && (
+                                <img
+                                    src={site.logoUrl}
+                                    alt="Logo"
+                                    style={{ maxHeight: 80, width: 'auto', objectFit: 'contain' }}
+                                />
+                            )}
+                            <h1 style={{
+                                fontSize: '28px',
+                                fontWeight: 700,
+                                color: '#11233B',
+                                margin: 0,
+                                letterSpacing: '-0.01em'
+                            }}>
+                                {site.name || 'Event'}
+                            </h1>
                         </div>
 
-                        {/* Tab nav */}
+                        {/* Tabs */}
                         {tabs.length > 1 && (
-                            <div style={{ display: 'flex', gap: 24, padding: '0 40px', borderBottom: '1px solid var(--color-gray-lighter)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '0 40px', borderBottom: '1px solid #E5E7EB' }}>
                                 {tabs.map(t => (
                                     <button key={t.id} onClick={() => setActiveTab(t.id)}
                                         style={{
                                             background: 'none', border: 'none', cursor: 'pointer',
-                                            padding: '16px 0', fontFamily: 'var(--font-family)',
-                                            fontWeight: 600, fontSize: 'var(--text-sm)',
-                                            color: activeTab === t.id ? 'var(--color-navy)' : 'var(--color-gray-light)',
-                                            borderBottom: activeTab === t.id ? '2px solid var(--color-brand)' : '2px solid transparent',
+                                            padding: '16px 0', fontFamily: 'inherit',
+                                            fontWeight: 600, fontSize: '14px',
+                                            color: activeTab === t.id ? '#11233B' : '#9CA3AF',
+                                            borderBottom: activeTab === t.id ? '2px solid #0090A8' : '2px solid transparent',
                                             transition: 'all 150ms'
                                         }}>{t.label}</button>
                                 ))}
@@ -529,15 +566,15 @@
                         {/* Content */}
                         <div style={{ padding: '32px 40px' }}>
                             {activeItems.length === 0 ? (
-                                <div style={{ textAlign: 'center', color: 'var(--color-gray-light)', padding: '48px 0' }}>
+                                <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '48px 0' }}>
                                     No content on this page.
                                 </div>
                             ) : activeItems.map(item => renderBlock(item, audioCtx, site.media))}
                         </div>
 
                         {/* Footer */}
-                        <div style={{ padding: '20px 40px', background: 'var(--color-bg-subtle)', textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-gray-light)' }}>
-                            Powered by <strong style={{ color: 'var(--color-brand)' }}>Podi@UM</strong>
+                        <div style={{ padding: '20px 40px', background: '#F8F9FA', textAlign: 'center', fontSize: '12px', color: '#9CA3AF' }}>
+                            Powered by <strong style={{ color: '#0090A8' }}>Podi@UM</strong>
                         </div>
                     </div>
                 </div>
