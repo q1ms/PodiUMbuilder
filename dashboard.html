@@ -36,7 +36,7 @@
         .project-card .card-body .actions .delete-btn:hover { color: #cc0000; background: #fee2e2; }
         .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8; }
         .empty-state i { font-size: 3rem; margin-bottom: 12px; display: block; color: #cbd5e1; }
-        #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999999; }
         #loginBox { background: white; padding: 40px; border-radius: 16px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
         #loginBox h2 { margin-bottom: 8px; }
         #loginBox p { opacity: 0.6; margin-bottom: 20px; }
@@ -165,22 +165,32 @@
             location.reload();
         });
 
+        // Always start with login form visible
+        document.getElementById('loginOverlay').style.display = 'flex';
+        document.getElementById('dashboardContent').style.display = 'none';
+
+        // Optional auto-login if token exists
         if (token) {
-            apiFetch('/api/verify').then(() => {
-                document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('dashboardContent').style.display = 'block';
-                loadSites();
-            }).catch(() => {
-                // Auto-login failed – clear token and show login form
+            fetch('/api/verify', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+            .then(resp => {
+                if (resp.ok) {
+                    // Token valid – skip login
+                    document.getElementById('loginOverlay').style.display = 'none';
+                    document.getElementById('dashboardContent').style.display = 'block';
+                    loadSites();
+                } else {
+                    // Token invalid – clear it
+                    localStorage.removeItem('podiumToken');
+                    token = null;
+                }
+            })
+            .catch(() => {
+                // Network error – just leave login form visible
                 localStorage.removeItem('podiumToken');
                 token = null;
-                document.getElementById('loginOverlay').style.display = 'flex';
-                document.getElementById('dashboardContent').style.display = 'none';
             });
-        } else {
-            // No token at all – ensure login form is visible
-            document.getElementById('loginOverlay').style.display = 'flex';
-            document.getElementById('dashboardContent').style.display = 'none';
         }
 
         // ================================================================
