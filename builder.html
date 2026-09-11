@@ -454,51 +454,46 @@
                     media: state.media,
                     updatedAt: new Date().toISOString(),
                 };
-                // Upload site data to Cloudinary
-                await uploadToCloudinary(siteData, state.siteId);
-                // Update manifest
-                const manifestUrl = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/manifest.json`;
-                let manifest = { sites: [] };
-                try {
-                    const resp = await fetch(manifestUrl + '?t=' + Date.now());
-                    if (resp.ok) manifest = await resp.json();
-                } catch (e) {}
-                const idx = manifest.sites.findIndex(s => s.id === state.siteId);
+
+                // Upload to Cloudinary (new URL each time)
+                const cloudUrl = await uploadToCloudinary(siteData, state.siteId);
+
+                // Update localStorage with new URL
+                const siteList = JSON.parse(localStorage.getItem('podiumSiteList') || '[]');
+                const idx = siteList.findIndex(s => s.id === state.siteId);
                 if (idx !== -1) {
-                    manifest.sites[idx].name = state.siteName;
-                    manifest.sites[idx].updatedAt = new Date().toISOString();
+                    siteList[idx].cloudUrl = cloudUrl;
+                    siteList[idx].name = state.siteName;
+                    siteList[idx].updatedAt = new Date().toISOString();
                 } else {
-                    manifest.sites.push({
+                    siteList.push({
                         id: state.siteId,
                         name: state.siteName,
+                        cloudUrl: cloudUrl,
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
                     });
                 }
-                await uploadToCloudinary(manifest, 'manifest');
+                localStorage.setItem('podiumSiteList', JSON.stringify(siteList));
+                console.log('✅ Auto-saved to Cloudinary');
             } catch (e) {
                 console.error('Save failed:', e);
             }
         }
 
+        // Helper: Upload to Cloudinary (no overwrite)
         async function uploadToCloudinary(content, publicId) {
             const blob = new Blob([JSON.stringify(content)], { type: 'application/json' });
-            const file = new File([blob], `${publicId}.json`, { type: 'application/json' });
+            const file = new File([blob], `${publicId}-${Date.now()}.json`, { type: 'application/json' });
             const formData = new FormData();
             formData.append('file', file);
             formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-            formData.append('public_id', publicId);
-            formData.append('overwrite', 'true');
-            // Use auto/upload instead of raw/upload
+            // No public_id, no overwrite - Cloudinary generates unique name
             const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
                 method: 'POST',
                 body: formData,
             });
-            if (!resp.ok) {
-                const err = await resp.text();
-                console.error('Cloudinary error:', err);
-                throw new Error('Upload failed: ' + err);
-            }
+            if (!resp.ok) throw new Error('Upload failed');
             return (await resp.json()).secure_url;
         }
 
@@ -1123,22 +1118,25 @@
             // Load site from Cloudinary on mount
             useEffect(() => {
                 async function loadSite() {
-                    if (siteId) {
+                    if (!siteId) {
+                        window.location.href = '/dashboard.html';
+                        return;
+                    }
+
+                    // Get the site list from localStorage
+                    const siteList = JSON.parse(localStorage.getItem('podiumSiteList') || '[]');
+                    const siteEntry = siteList.find(s => s.id === siteId);
+
+                    if (siteEntry && siteEntry.cloudUrl) {
                         try {
-                            const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/${siteId}.json?t=${Date.now()}`;
-                            const resp = await fetch(url, { cache: 'no-cache' });
+                            const resp = await fetch(siteEntry.cloudUrl + '?t=' + Date.now());
                             if (resp.ok) {
                                 const site = await resp.json();
                                 dispatch({ type: 'LOAD', state: site });
-                            } else {
-                                window.location.href = '/dashboard.html';
                             }
                         } catch (e) {
-                            console.error('Failed to load site', e);
-                            window.location.href = '/dashboard.html';
+                            console.error('Failed to load site:', e);
                         }
-                    } else {
-                        window.location.href = '/dashboard.html';
                     }
                     setLoading(false);
                 }

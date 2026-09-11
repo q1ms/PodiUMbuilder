@@ -117,7 +117,8 @@
             formData.append('file', file);
             formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
             formData.append('public_id', publicId);
-            formData.append('overwrite', 'true');
+            // ❌ REMOVE overwrite - not allowed
+            // formData.append('overwrite', 'true');
             // Use auto/upload instead of raw/upload
             const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
                 method: 'POST',
@@ -248,33 +249,42 @@
 
         async function createNewSite() {
             const id = 'site-' + Date.now();
-            const newSite = {
+            const siteData = {
                 id,
                 name: 'Untitled Site',
+                components: [],
+                tabs: [{ id: 'main', label: 'Main' }],
+                activeTab: 'main',
+                logoUrl: '',
+                bgColor: '#f8fafc',
+                topBarColor: '#ffffff',
+                media: [],
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             };
-            // Add to local list first
-            sites.push(newSite);
-            saveSiteList();
-            // Then save site JSON to Cloudinary
+
             try {
-                await uploadToCloudinary({
+                // Upload to Cloudinary - get the URL
+                const cloudUrl = await uploadToCloudinary(siteData, id);
+                console.log('✅ Site uploaded to Cloudinary:', cloudUrl);
+
+                // Save site + URL in localStorage
+                const newSite = {
                     id,
-                    name: newSite.name,
-                    components: [],
-                    tabs: [{ id: 'main', label: 'Main' }],
-                    activeTab: 'main',
-                    logoUrl: '',
-                    bgColor: '#f8fafc',
-                    topBarColor: '#ffffff',
-                    media: [],
-                }, id);
+                    name: siteData.name,
+                    cloudUrl: cloudUrl,
+                    createdAt: siteData.createdAt,
+                    updatedAt: siteData.updatedAt,
+                };
+                sites.push(newSite);
+                saveSiteList();
+
+                // Open builder
+                window.location.href = `builder.html?site=${id}`;
             } catch (e) {
-                console.error('Cloudinary upload failed, but site created locally:', e);
-                alert('Site created but cloud save failed. You can still edit it.');
+                console.error('❌ Upload failed:', e);
+                alert('Cloud save failed: ' + e.message);
             }
-            window.location.href = `builder.html?site=${id}`;
         }
 
         document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
