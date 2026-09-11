@@ -99,12 +99,23 @@
         async function apiFetch(endpoint, options = {}) {
             const headers = {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token,
                 ...options.headers,
             };
+            if (token) {
+                headers['Authorization'] = 'Bearer ' + token;
+            }
             const resp = await fetch(endpoint, { ...options, headers });
-            if (!resp.ok) throw new Error((await resp.json()).error || 'API error');
-            return resp.json();
+            if (resp.status === 401) {
+                // Just clear the token, don't reload
+                localStorage.removeItem('podiumToken');
+                token = null;
+                throw new Error('Unauthorized');
+            }
+            const data = await resp.json();
+            if (!resp.ok) {
+                throw new Error(data.error || 'API error');
+            }
+            return data;
         }
 
         // ================================================================
@@ -165,31 +176,46 @@
             location.reload();
         });
 
-        // Always start with login form visible
-        document.getElementById('loginOverlay').style.display = 'flex';
-        document.getElementById('dashboardContent').style.display = 'none';
+        // ============================================================
+        // BOOT: Always show login form by default
+        // ============================================================
+        const loginOverlay = document.getElementById('loginOverlay');
+        const dashboardContent = document.getElementById('dashboardContent');
 
-        // Optional auto-login if token exists
+        function showLogin() {
+            loginOverlay.style.display = 'flex';
+            dashboardContent.style.display = 'none';
+        }
+
+        function showDashboard() {
+            loginOverlay.style.display = 'none';
+            dashboardContent.style.display = 'block';
+        }
+
+        // Start with login form
+        showLogin();
+
+        // If a token exists, try to verify it
         if (token) {
             fetch('/api/verify', {
                 headers: { 'Authorization': 'Bearer ' + token }
             })
             .then(resp => {
                 if (resp.ok) {
-                    // Token valid – skip login
-                    document.getElementById('loginOverlay').style.display = 'none';
-                    document.getElementById('dashboardContent').style.display = 'block';
+                    showDashboard();
                     loadSites();
                 } else {
-                    // Token invalid – clear it
+                    // Invalid token – clear and stay on login
                     localStorage.removeItem('podiumToken');
                     token = null;
+                    showLogin();
                 }
             })
             .catch(() => {
-                // Network error – just leave login form visible
+                // Network error – stay on login
                 localStorage.removeItem('podiumToken');
                 token = null;
+                showLogin();
             });
         }
 
