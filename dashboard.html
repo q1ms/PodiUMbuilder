@@ -171,9 +171,16 @@
                 document.getElementById('dashboardContent').style.display = 'block';
                 loadSites();
             }).catch(() => {
+                // Auto-login failed – clear token and show login form
                 localStorage.removeItem('podiumToken');
                 token = null;
+                document.getElementById('loginOverlay').style.display = 'flex';
+                document.getElementById('dashboardContent').style.display = 'none';
             });
+        } else {
+            // No token at all – ensure login form is visible
+            document.getElementById('loginOverlay').style.display = 'flex';
+            document.getElementById('dashboardContent').style.display = 'none';
         }
 
         // ================================================================

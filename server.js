@@ -22,7 +22,7 @@ app.post('/api/save-site', async (req, res) => {
         const publicId = `podium-sites/${siteId}`;
 
         // Generate Cloudinary signature
-        const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}&overwrite=true`;
+        const paramsToSign = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
         const signature = crypto
             .createHash('sha1')
             .update(paramsToSign + process.env.CLOUDINARY_API_SECRET)
