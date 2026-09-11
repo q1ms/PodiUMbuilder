@@ -136,6 +136,7 @@
             const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(0.8);
             const audioRef = useRef(null);
+            const fadeIntervalRef = useRef(null);
 
             useEffect(() => {
                 const audio = new Audio();
@@ -160,11 +161,33 @@
                 return () => {
                     audio.pause();
                     audio.src = '';
+                    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
                     audio.removeEventListener('timeupdate', handleTimeUpdate);
                     audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
                     audio.removeEventListener('ended', handleEnded);
                 };
             }, []);
+
+            const fadeTo = (targetVol, duration = 1000, callback) => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+
+                const startVol = audio.volume;
+                const startTime = Date.now();
+                const steps = 30;
+                const stepTime = duration / steps;
+
+                fadeIntervalRef.current = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    const ratio = Math.min(1, elapsed / duration);
+                    audio.volume = startVol + (targetVol - startVol) * ratio;
+                    if (ratio >= 1) {
+                        clearInterval(fadeIntervalRef.current);
+                        if (callback) callback();
+                    }
+                }, stepTime);
+            };
 
             const play = (url) => {
                 const audio = audioRef.current;
@@ -172,10 +195,13 @@
                 if (audio.src !== url) {
                     audio.src = url;
                     audio.load();
+                    audio.volume = 0; // start at 0 for fade in
+                } else {
+                    audio.volume = 0;
                 }
-                audio.volume = volume;
                 audio.play().then(() => {
                     setIsPlaying(true);
+                    fadeTo(volume, 800);
                 }).catch(() => {});
                 setAudioUrl(url);
             };
@@ -183,8 +209,10 @@
             const pause = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                audio.pause();
-                setIsPlaying(false);
+                fadeTo(0, 600, () => {
+                    audio.pause();
+                    setIsPlaying(false);
+                });
             };
 
             const togglePlay = (url) => {
@@ -286,7 +314,7 @@
         const DEFAULT_PROPS = {
             SoundButton: { label: 'Sound Button', audioUrl: '', color: '#1a1a2e' },
             Playlist: { title: 'Playlist', tracks: [], color: '#1a1a2e' },
-            CustomUploads: { title: 'Custom Uploads', subtitle: 'Upload audio files from your PC', color: '#1a1a2e' },
+            CustomUploads: { title: 'Custom Uploads', subtitle: 'Upload audio files', color: '#1a1a2e', files: [] },
             SlidesManager: { title: 'Slides Manager', subtitle: 'Upload PDF or images', color: '#1a1a2e' },
             ProgressControls: { title: 'Now Playing / Volume', color: '#1a1a2e' },
             Divider: { label: 'Divider', color: '#d1d5db' },
@@ -688,9 +716,14 @@
         };
 
         // ---- CustomUploads ----
-        const CustomUploadsComponent = ({ props, dispatch, notify }) => {
+        const CustomUploadsComponent = ({ id, props, dispatch, notify }) => {
             const [uploading, setUploading] = useState(false);
             const [progress, setProgress] = useState(0);
+            const files = props.files || [];
+
+            const updateProps = (newProps) => {
+                dispatch({ type: 'UPDATE_PROPS', id, props: { ...props, ...newProps } });
+            };
 
             const handleUpload = async (e) => {
                 const selected = Array.from(e.target.files);
@@ -699,6 +732,8 @@
                 setProgress(0);
                 let total = selected.length;
                 let completed = 0;
+                const newFiles = [...files];
+
                 for (const file of selected) {
                     try {
                         const url = await uploadToCloudinaryWithProgress(file, (p) => {
@@ -707,34 +742,57 @@
                         });
                         const mediaItem = { id: nextId('media'), name: file.name, url };
                         dispatch({ type: 'ADD_MEDIA', item: mediaItem });
+                        newFiles.push({ id: mediaItem.id, name: file.name, url });
                         completed++;
                         setProgress(Math.round((completed / total) * 100));
                     } catch (err) {
                         notify('Upload failed: ' + file.name, 'danger');
                         completed++;
-                        setProgress(Math.round((completed / total) * 100));
                     }
                 }
+                updateProps({ files: newFiles });
                 setUploading(false);
                 setProgress(0);
                 if (completed === total) notify(`${total} file(s) uploaded`, 'success');
                 e.target.value = '';
             };
 
+            const removeFile = (fileId) => {
+                updateProps({ files: files.filter(f => f.id !== fileId) });
+            };
+
             return (
                 <div>
                     <div className="text-sm font-medium text-gray-800 mb-1">{props.title}</div>
                     {props.subtitle && <div className="text-xs text-gray-400 mb-3">{props.subtitle}</div>}
+
                     <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-sm text-gray-400 hover:border-gray-400 transition-colors cursor-pointer relative"
                         style={{ borderColor: props.color || '#d1d5db' }}>
                         <input type="file" multiple accept="audio/*" onChange={handleUpload} className="absolute inset-0 opacity-0 cursor-pointer" onClick={(e) => e.stopPropagation()} disabled={uploading} />
                         {uploading ? <span>⏳ Uploading... {progress}%</span> : <span>Drag & drop or click to upload</span>}
                     </div>
+
                     {uploading && (
                         <div className="mt-2">
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                                 <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: progress + '%' }}></div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* Uploaded file buttons */}
+                    {files.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {files.map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={(e) => { e.stopPropagation(); window.__audioCtx?.play(f.url); }}
+                                    className="bg-gray-900 hover:bg-gray-800 text-white text-xs rounded-full px-4 py-2 transition-colors flex items-center gap-2"
+                                >
+                                    ▶ {f.name}
+                                    <span onClick={(e) => { e.stopPropagation(); removeFile(f.id); }} className="text-red-400 hover:text-red-600">✕</span>
+                                </button>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -768,7 +826,7 @@
             switch (type) {
                 case 'SoundButton': return <SoundButtonComponent id={id} props={props} dispatch={dispatch} notify={notify} audioCtx={audioCtx} media={media} />;
                 case 'Playlist': return <PlaylistComponent id={id} props={props} dispatch={dispatch} notify={notify} audioCtx={audioCtx} media={media} />;
-                case 'CustomUploads': return <CustomUploadsComponent props={props} dispatch={dispatch} notify={notify} />;
+                case 'CustomUploads': return <CustomUploadsComponent id={id} props={props} dispatch={dispatch} notify={notify} />;
                 case 'SlidesManager':
                     return (
                         <div>
@@ -1211,8 +1269,12 @@
             const [previewMode, setPreviewMode] = useState(false);
             const [toasts, notify] = useToasts();
             const [loading, setLoading] = useState(true);
+            const [saving, setSaving] = useState(false);
             const selectedItem = state.components.find(c => c.id === state.selectedId) || null;
             const audioCtx = useContext(AudioContext);
+
+            // Expose audioCtx globally for CustomUploads buttons
+            useEffect(() => { window.__audioCtx = audioCtx; }, [audioCtx]);
 
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
@@ -1314,9 +1376,22 @@
                                 className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">
                                 {Icons.eye({ size: 15 })} {previewMode ? 'Edit' : 'Preview'}
                             </button>
-                            <button onClick={() => publishLayout(state, notify)}
-                                className="rounded-full px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-2">
-                                {Icons.save({ size: 15 })} Save
+                            <button
+                                onClick={async () => {
+                                    if (saving) return;
+                                    setSaving(true);
+                                    try { await publishLayout(state, notify); } finally { setSaving(false); }
+                                }}
+                                disabled={saving}
+                                className={`rounded-full px-4 py-2 text-sm font-medium text-white transition-colors flex items-center gap-2 ${saving ? 'bg-emerald-400 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                                {saving ? (
+                                    <>
+                                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>{Icons.save({ size: 15 })} Save</>
+                                )}
                             </button>
                             <button onClick={() => window.location.href = '/dashboard.html'}
                                 className="rounded-full px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2">

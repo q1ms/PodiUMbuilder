@@ -33,6 +33,7 @@
             const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(0.8);
             const audioRef = useRef(null);
+            const fadeIntervalRef = useRef(null);
 
             useEffect(() => {
                 const audio = new Audio();
@@ -47,21 +48,59 @@
                 audio.addEventListener('ended', onEnd);
                 return () => {
                     audio.pause(); audio.src = '';
+                    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
                     audio.removeEventListener('timeupdate', onTime);
                     audio.removeEventListener('loadedmetadata', onMeta);
                     audio.removeEventListener('ended', onEnd);
                 };
             }, []);
 
+            const fadeTo = (targetVol, duration = 1000, callback) => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+
+                const startVol = audio.volume;
+                const startTime = Date.now();
+                const steps = 30;
+                const stepTime = duration / steps;
+
+                fadeIntervalRef.current = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    const ratio = Math.min(1, elapsed / duration);
+                    audio.volume = startVol + (targetVol - startVol) * ratio;
+                    if (ratio >= 1) {
+                        clearInterval(fadeIntervalRef.current);
+                        if (callback) callback();
+                    }
+                }, stepTime);
+            };
+
             const play = (url) => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                if (audio.src !== url) { audio.src = url; audio.load(); }
-                audio.volume = volume;
-                audio.play().then(() => setIsPlaying(true)).catch(() => {});
+                if (audio.src !== url) {
+                    audio.src = url;
+                    audio.load();
+                    audio.volume = 0; // start at 0 for fade in
+                } else {
+                    audio.volume = 0;
+                }
+                audio.play().then(() => {
+                    setIsPlaying(true);
+                    fadeTo(volume, 800);
+                }).catch(() => {});
                 setAudioUrl(url);
             };
-            const pause = () => { if (audioRef.current) { audioRef.current.pause(); setIsPlaying(false); } };
+
+            const pause = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                fadeTo(0, 600, () => {
+                    audio.pause();
+                    setIsPlaying(false);
+                });
+            };
             const togglePlay = (url) => {
                 if (!url) return;
                 if (audioUrl === url && isPlaying) pause(); else play(url);
@@ -177,14 +216,124 @@
             </div>
         );
 
-        const SlidesManagerBlock = ({ props }) => (
-            <div className="mb-4">
-                <div className="text-sm font-semibold text-gray-700 mb-1">{props.title || 'Slides'}</div>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl py-6 text-center text-sm text-gray-400">
-                    📄 Upload slides
+        const SlidesManagerBlock = ({ props }) => {
+            const [slides, setSlides] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [fullscreen, setFullscreen] = useState(false);
+
+            const handleFiles = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+
+                const newSlides = [];
+                for (const file of files) {
+                    if (file.type === 'application/pdf') {
+                        // Load PDF
+                        if (!window.pdfjsLib) {
+                            await new Promise((resolve) => {
+                                const script = document.createElement('script');
+                                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+                                script.onload = () => {
+                                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                                    resolve();
+                                };
+                                document.head.appendChild(script);
+                            });
+                        }
+                        const buffer = await file.arrayBuffer();
+                        const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const viewport = page.getViewport({ scale: 1.5 });
+                            const canvas = document.createElement('canvas');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            const renderResult = page.render({ canvasContext: canvas.getContext('2d'), viewport });
+                            await (renderResult.promise || renderResult);
+                            newSlides.push(canvas.toDataURL('image/png'));
+                        }
+                    } else if (file.type.startsWith('image/')) {
+                        const dataURL = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => resolve(ev.target.result);
+                            reader.readAsDataURL(file);
+                        });
+                        newSlides.push(dataURL);
+                    }
+                }
+                setSlides(prev => [...prev, ...newSlides]);
+                e.target.value = '';
+            };
+
+            const goNext = () => slides.length && setCurrentIndex((currentIndex + 1) % slides.length);
+            const goPrev = () => slides.length && setCurrentIndex((currentIndex - 1 + slides.length) % slides.length);
+
+            // Fullscreen presentation mode
+            useEffect(() => {
+                const handleKey = (e) => {
+                    if (!fullscreen) return;
+                    if (e.key === 'ArrowRight' || e.key === ' ') goNext();
+                    if (e.key === 'ArrowLeft') goPrev();
+                    if (e.key === 'Escape') setFullscreen(false);
+                };
+                window.addEventListener('keydown', handleKey);
+                return () => window.removeEventListener('keydown', handleKey);
+            }, [fullscreen, slides.length, currentIndex]);
+            return (
+                <div className="mb-4">
+                    <div className="text-sm font-semibold text-gray-700 mb-2">{props.title || 'Slides'}</div>
+
+                    {/* Upload area */}
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl py-4 text-center text-sm text-gray-400 cursor-pointer hover:border-gray-400 transition-colors mb-3">
+                        <label className="cursor-pointer block">
+                            <span>📄 Click to upload PDF / PNG / JPEG</span>
+                            <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleFiles} />
+                        </label>
+                    </div>
+
+                    {slides.length > 0 && (
+                        <>
+                            {/* Preview */}
+                            <div className="bg-black rounded-lg overflow-hidden mb-3" style={{ aspectRatio: '16/9' }}>
+                                <img src={slides[currentIndex]} alt="Slide" className="w-full h-full object-contain" />
+                            </div>
+
+                            {/* Controls */}
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                                <button onClick={goPrev} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">◀ Prev</button>
+                                <span className="text-xs text-gray-500">{currentIndex + 1} / {slides.length}</span>
+                                <button onClick={goNext} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">Next ▶</button>
+                                <button onClick={() => setFullscreen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-4 py-2 text-sm font-medium">▶ Fullscreen</button>
+                            </div>
+
+                            {/* Thumbnails */}
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                {slides.map((s, i) => (
+                                    <img key={i} src={s} alt={`Thumb ${i + 1}`} onClick={() => setCurrentIndex(i)}
+                                        className={`h-12 w-20 object-cover rounded cursor-pointer border-2 ${i === currentIndex ? 'border-emerald-500' : 'border-transparent'}`} />
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    {/* Fullscreen mode */}
+                    {fullscreen && (
+                        <div style={{
+                            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                            background: 'black', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }} onClick={(e) => { if (e.target === e.currentTarget) setFullscreen(false); }}>
+                            <img src={slides[currentIndex]} alt="Slide" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                            <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12, background: 'rgba(0,0,0,0.6)', padding: '10px 20px', borderRadius: 30 }}>
+                                <button onClick={goPrev} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>◀</button>
+                                <span style={{ color: 'white', fontSize: '0.9rem', alignSelf: 'center' }}>{currentIndex + 1} / {slides.length}</span>
+                                <button onClick={goNext} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>▶</button>
+                                <button onClick={() => setFullscreen(false)} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', marginLeft: 12 }}>✕ Exit</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            </div>
-        );
+            );
+        };
 
         const ProgressControlsBlock = ({ props, audioCtx }) => (
             <div className="mb-4 bg-gray-50 rounded-xl p-4">
