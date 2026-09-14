@@ -370,6 +370,7 @@
                         activeTab: data.activeTab || 'main',
                         components: data.components || [],
                         selectedId: null,
+                        __lastAction: undefined,
                     };
                 }
                 case 'ADD': {
@@ -473,6 +474,9 @@
                     return state;
             }
             // Auto-save after each action (except LOAD and RESET)
+            if (newState && action.type !== 'LOAD') {
+                newState.__lastAction = action.type;
+            }
             if (action.type !== 'LOAD' && action.type !== 'RESET') {
                 saveSite(newState);
             }
@@ -965,8 +969,8 @@
         // ================================================================
         // LEFT SIDEBAR
         // ================================================================
-        const LeftSidebar = ({ state, dispatch, notify }) => {
-            const [activeSidebarTab, setActiveSidebarTab] = useState('sections');
+        const LeftSidebar = ({ state, dispatch, notify, audioCtx }) => {
+            const [activeTab, setActiveTab] = useState('sections');
             const [uploading, setUploading] = useState(false);
             const [progress, setProgress] = useState(0);
             const media = state.media || [];
@@ -976,105 +980,148 @@
                 if (!files.length) return;
                 setUploading(true);
                 setProgress(0);
-                let total = files.length;
                 let completed = 0;
                 for (const file of files) {
                     try {
                         const url = await uploadToCloudinaryWithProgress(file, (p) => {
-                            const overall = Math.round(((completed + p / 100) / total) * 100);
-                            setProgress(Math.min(100, overall));
+                            setProgress(Math.round(((completed + p / 100) / files.length) * 100));
                         });
-                        const mediaItem = { id: nextId('media'), name: file.name, url };
-                        dispatch({ type: 'ADD_MEDIA', item: mediaItem });
+                        dispatch({ type: 'ADD_MEDIA', item: { id: nextId('media'), name: file.name, url } });
                         completed++;
-                        setProgress(Math.round((completed / total) * 100));
                     } catch (err) {
                         notify('Upload failed: ' + file.name, 'danger');
-                        completed++;
-                        setProgress(Math.round((completed / total) * 100));
                     }
                 }
                 setUploading(false);
                 setProgress(0);
-                if (completed === total) notify(`${total} file(s) uploaded`, 'success');
+                notify(`${completed} file(s) uploaded`, 'success');
                 e.target.value = '';
             };
 
-            const removeMedia = (id) => {
-                if (confirm('Remove this file from the library?')) {
-                    dispatch({ type: 'REMOVE_MEDIA', id });
-                    notify('Media removed');
-                }
+            const SECTION_INFO = {
+                SoundButton: { label: 'Sound Button', desc: 'Play an audio file', icon: 'fa-volume-up' },
+                Playlist: { label: 'Playlist', desc: 'Multiple tracks in one place', icon: 'fa-list' },
+                CustomUploads: { label: 'Custom Uploads', desc: 'Upload and play custom audio', icon: 'fa-cloud-upload-alt' },
+                SlidesManager: { label: 'Slides Manager', desc: 'Add presentation slides', icon: 'fa-images' },
+                ProgressControls: { label: 'Progress & Volume', desc: 'Audio controls with progress', icon: 'fa-sliders-h' },
+                Divider: { label: 'Divider', desc: 'Visual separator with label', icon: 'fa-minus' },
             };
-
-            const copyUrl = (url) => {
-                navigator.clipboard.writeText(url).then(() => {
-                    notify('URL copied!');
-                }).catch(() => {});
-            };
-
             return (
-                <div className="w-64 bg-white border-r border-gray-200 flex flex-col py-4 px-3 gap-2 overflow-y-auto flex-shrink-0">
-                    <div className="sidebar-tabs">
-                        <div className={`sidebar-tab ${activeSidebarTab === 'sections' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('sections')}>Sections</div>
-                        <div className={`sidebar-tab ${activeSidebarTab === 'media' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('media')}>Media</div>
-                        <div className={`sidebar-tab ${activeSidebarTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveSidebarTab('settings')}>Settings</div>
+                <div className="builder-sidebar-left">
+                    {/* Tabs */}
+                    <div className="builder-tabs">
+                        <button className={`builder-tab ${activeTab === 'sections' ? 'active' : ''}`} onClick={() => setActiveTab('sections')}>
+                            <i className="fas fa-th-large"></i> Blocks
+                        </button>
+                        <button className={`builder-tab ${activeTab === 'media' ? 'active' : ''}`} onClick={() => setActiveTab('media')}>
+                            <i className="fas fa-photo-video"></i> Media
+                        </button>
+                        <button className={`builder-tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+                            <i className="fas fa-cog"></i> Settings
+                        </button>
                     </div>
 
-                    <div className="sidebar-tab-content">
-                        {activeSidebarTab === 'sections' && (
-                            <div>
-                                {Object.entries(BLOCK_META).map(([type, meta]) => (
-                                    <button key={type} onClick={() => { dispatch({ type: 'ADD', blockType: type }); notify(`${meta.label} added`); }}
-                                        className="flex flex-col items-center gap-2 w-full py-3 hover:bg-gray-50 rounded-lg transition-colors">
-                                        {Icons[meta.icon]({ size: 22, className: 'text-gray-800' })}
-                                        <span className="text-xs text-gray-600">{meta.label}</span>
+                    {/* Content */}
+                    <div className="builder-tab-content">
+                        {activeTab === 'sections' && (
+                            <>
+                                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-gray-light)', marginBottom: 12 }}>
+                                    Add Blocks
+                                </div>
+                                {Object.entries(SECTION_INFO).map(([type, info]) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => { dispatch({ type: 'ADD', blockType: type }); notify(`${info.label} added`); }}
+                                        className="section-picker-btn"
+                                    >
+                                        <div className="icon-box">
+                                            <i className={`fas ${info.icon}`}></i>
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div className="label">{info.label}</div>
+                                            <div className="desc">{info.desc}</div>
+                                        </div>
+                                        <i className="fas fa-plus" style={{ color: 'var(--color-brand)', fontSize: 12 }}></i>
                                     </button>
                                 ))}
-                            </div>
+                            </>
                         )}
-                        {activeSidebarTab === 'media' && (
-                            <div>
-                                <label className="block w-full text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-2 cursor-pointer transition-colors mb-2">
-                                    {uploading ? `⏳ Uploading ${progress}%` : '📤 Upload Audio'}
-                                    <input type="file" multiple accept="audio/*" className="hidden" onChange={handleMediaUpload} disabled={uploading} />
+
+                        {activeTab === 'media' && (
+                            <>
+                                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-gray-light)', marginBottom: 12 }}>
+                                    Media Library
+                                </div>
+
+                                <label style={{
+                                    display: 'block',
+                                    border: '2px dashed var(--color-gray-lighter)',
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: '20px 12px',
+                                    textAlign: 'center',
+                                    cursor: uploading ? 'wait' : 'pointer',
+                                    marginBottom: 12,
+                                    transition: 'all 150ms',
+                                    background: uploading ? 'var(--color-brand-tint)' : 'transparent',
+                                }}>
+                                    <input type="file" multiple accept="audio/*,image/*" style={{ display: 'none' }} onChange={handleMediaUpload} disabled={uploading} />
+                                    <i className="fas fa-cloud-upload-alt" style={{ fontSize: 24, color: 'var(--color-brand)', marginBottom: 8, display: 'block' }}></i>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-navy)' }}>
+                                        {uploading ? `Uploading… ${progress}%` : 'Click to upload'}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'var(--color-gray-light)', marginTop: 4 }}>
+                                        Audio or images
+                                    </div>
                                 </label>
+
                                 {uploading && (
-                                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
-                                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: progress + '%' }}></div>
+                                    <div style={{ height: 4, background: 'var(--color-bg-tint)', borderRadius: 2, overflow: 'hidden', marginBottom: 12 }}>
+                                        <div style={{ height: '100%', width: progress + '%', background: 'var(--color-brand)', transition: 'width 200ms' }}></div>
                                     </div>
                                 )}
-                                <div className="media-grid">
-                                    {media.length === 0 ? (
-                                        <div className="col-span-2 text-xs text-gray-400 text-center py-4">No media yet</div>
-                                    ) : (
-                                        media.map(m => (
-                                            <div key={m.id} className="media-item" onClick={() => copyUrl(m.url)}>
-                                                <div className="name">{m.name}</div>
-                                                <button className="remove-btn" onClick={(e) => { e.stopPropagation(); removeMedia(m.id); }}>✕</button>
+                                {media.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '32px 12px', color: 'var(--color-gray-light)', fontSize: 12 }}>
+                                        No media yet
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {media.map(m => (
+                                            <div key={m.id} className="media-grid-item" onClick={() => {
+                                                if (m.url.match(/\.(mp3|wav|ogg|m4a|aac)$/i) || m.url.includes('/video/')) {
+                                                    audioCtx.togglePlay(m.url);
+                                                }
+                                            }}>
+                                                <i className={`fas ${m.name.match(/\.(mp3|wav|ogg|m4a|aac)$/i) ? 'fa-music' : 'fa-image'}`} style={{ color: 'var(--color-brand)' }}></i>
+                                                <span className="media-name">{m.name}</span>
+                                                <button className="media-remove" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm('Remove this file?')) dispatch({ type: 'REMOVE_MEDIA', id: m.id });
+                                                }}>✕</button>
                                             </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
                         )}
-                        {activeSidebarTab === 'settings' && (
-                            <div>
-                                <div className="mb-3">
-                                    <label className="text-xs font-medium text-gray-500 block mb-1.5">Page Background</label>
-                                    <div className="flex items-center gap-2">
-                                        <input type="color" value={state.bgColor || '#f8fafc'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
-                                        <input type="text" value={state.bgColor || '#f8fafc'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+
+                        {activeTab === 'settings' && (
+                            <>
+                                <div className="prop-group">
+                                    <h4>Page Background</h4>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                        <input type="color" value={state.bgColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} style={{ width: 40, height: 40, border: '1px solid var(--color-gray-lighter)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }} />
+                                        <input type="text" value={state.bgColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_BG_COLOR', color: e.target.value })} className="input" style={{ flex: 1 }} />
                                     </div>
                                 </div>
-                                <div className="mb-3">
-                                    <label className="text-xs font-medium text-gray-500 block mb-1.5">Top Bar Colour</label>
-                                    <div className="flex items-center gap-2">
-                                        <input type="color" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
-                                        <input type="text" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+
+                                <div className="prop-group">
+                                    <h4>Top Bar Colour</h4>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                        <input type="color" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} style={{ width: 40, height: 40, border: '1px solid var(--color-gray-lighter)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }} />
+                                        <input type="text" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="input" style={{ flex: 1 }} />
                                     </div>
                                 </div>
-                            </div>
+                            </>
                         )}
                     </div>
                 </div>
@@ -1091,33 +1138,47 @@
 
             const tabItems = components.filter(c => c.tab === activeTab);
 
-            const renderList = (items, groupTab) => items.map((item, idx) => (
-                <div key={item.id}
-                    className={`relative rounded-xl border-2 mb-4 transition-colors p-4
-                        ${selectedId === item.id ? 'border-gray-800' : 'border-transparent hover:border-gray-200'}
-                        ${dragOverId === item.id ? 'border-t-4 border-t-gray-400' : ''}`}
-                    draggable={!previewMode}
-                    onClick={e => { e.stopPropagation(); dispatch({ type: 'SELECT', id: item.id }); }}
-                    onDragStart={() => { dragRef.current = item.id; e.dataTransfer.setData('text/plain', item.id); }}
-                    onDragOver={e => { e.preventDefault(); setDragOverId(item.id); }}
-                    onDragLeave={() => setDragOverId(null)}
-                    onDrop={e => { e.preventDefault(); if (dragRef.current) dispatch({ type: 'REORDER', fromId: dragRef.current, toId: item.id, toTab: groupTab }); setDragOverId(null); }}
-                    onDragEnd={() => { dragRef.current = null; setDragOverId(null); }}>
-                    {!previewMode && selectedId === item.id && (
-                        <div className="absolute -top-4 right-3 flex gap-0.5 bg-gray-900 rounded-lg p-1 shadow-lg z-10">
-                            <button className="text-white p-1.5 rounded hover:bg-white/15 disabled:opacity-30" disabled={idx === 0}
-                                onClick={e => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: groupTab, direction: -1 }); }}>{Icons.up({ size: 13 })}</button>
-                            <button className="text-white p-1.5 rounded hover:bg-white/15 disabled:opacity-30" disabled={idx === items.length - 1}
-                                onClick={e => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: groupTab, direction: 1 }); }}>{Icons.down({ size: 13 })}</button>
-                            <button className="text-white p-1.5 rounded hover:bg-white/15"
-                                onClick={e => { e.stopPropagation(); dispatch({ type: 'DUPLICATE', id: item.id }); notify('Duplicated'); }}>{Icons.copy({ size: 13 })}</button>
-                            <button className="text-white p-1.5 rounded hover:bg-red-600"
-                                onClick={e => { e.stopPropagation(); dispatch({ type: 'DELETE', id: item.id }); notify('Removed', 'danger'); }}>{Icons.trash({ size: 13 })}</button>
-                        </div>
-                    )}
-                    {renderBlock(item, dispatch, notify, audioCtx, media, state)}
-                </div>
-            ));
+            const renderBlockWrapper = (item, idx) => {
+                const isSelected = selectedId === item.id;
+                return (
+                    <div
+                        key={item.id}
+                        className={`block-wrapper ${isSelected ? 'selected' : ''} ${dragOverId === item.id ? 'drag-over' : ''}`}
+                        draggable={!previewMode}
+                        onClick={(e) => { e.stopPropagation(); dispatch({ type: 'SELECT', id: item.id }); }}
+                        onDragStart={(e) => { dragRef.current = item.id; e.dataTransfer.setData('text/plain', item.id); e.dataTransfer.effectAllowed = 'move'; }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverId(item.id); }}
+                        onDragLeave={() => setDragOverId(null)}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            const draggedId = dragRef.current || e.dataTransfer.getData('text/plain');
+                            if (draggedId && draggedId !== item.id) {
+                                dispatch({ type: 'REORDER', fromId: draggedId, toId: item.id, toTab: activeTab });
+                            }
+                            setDragOverId(null);
+                        }}
+                        onDragEnd={() => { dragRef.current = null; setDragOverId(null); }}
+                    >
+                        {!previewMode && (
+                            <div className="block-toolbar">
+                                <button disabled={idx === 0} onClick={(e) => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: activeTab, direction: -1 }); }} title="Move up">
+                                    <i className="fas fa-arrow-up" style={{ fontSize: 11 }}></i>
+                                </button>
+                                <button disabled={idx === tabItems.length - 1} onClick={(e) => { e.stopPropagation(); dispatch({ type: 'MOVE', id: item.id, tab: activeTab, direction: 1 }); }} title="Move down">
+                                    <i className="fas fa-arrow-down" style={{ fontSize: 11 }}></i>
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DUPLICATE', id: item.id }); notify('Duplicated'); }} title="Duplicate">
+                                    <i className="fas fa-copy" style={{ fontSize: 11 }}></i>
+                                </button>
+                                <button className="danger" onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE', id: item.id }); notify('Removed', 'danger'); }} title="Delete">
+                                    <i className="fas fa-trash" style={{ fontSize: 11 }}></i>
+                                </button>
+                            </div>
+                        )}
+                        {renderBlock(item, dispatch, notify, audioCtx, media, state)}
+                    </div>
+                );
+            };
 
             const renameTab = (tab) => {
                 const label = prompt('Rename tab', tab.label);
@@ -1127,32 +1188,67 @@
                 const label = prompt('New tab name', `Tab ${tabs.length + 1}`);
                 if (label && label.trim()) dispatch({ type: 'ADD_TAB', label: label.trim() });
             };
-
             return (
-                <div className="flex-1 bg-slate-50 p-8 flex flex-col overflow-hidden" onClick={() => dispatch({ type: 'SELECT', id: null })}
-                    style={{ background: bgColor || '#f8fafc' }}>
-                    <div className="bg-white rounded-2xl flex-1 flex flex-col overflow-hidden" style={{ boxShadow: '0 8px 30px rgb(0,0,0,0.04)' }}>
+                <div className="builder-canvas" onClick={() => dispatch({ type: 'SELECT', id: null })} style={{ background: bgColor || 'var(--color-bg-subtle)' }}>
+                    <div className="builder-canvas-inner">
                         {!previewMode && (
-                            <div className="p-4 flex items-center gap-4 border-b border-gray-200 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 16,
+                                paddingBottom: 16,
+                                marginBottom: 24,
+                                borderBottom: '1px solid var(--color-gray-lighter)',
+                            }} onClick={(e) => e.stopPropagation()}>
                                 {tabs.map(tab => (
-                                    <div key={tab.id} className="flex items-center gap-1.5">
-                                        <button onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id })}
-                                            className={`text-sm font-medium ${activeTab === tab.id ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>{tab.label}</button>
+                                    <div key={tab.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <button
+                                            onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id })}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontFamily: 'inherit',
+                                                fontSize: 14,
+                                                fontWeight: 600,
+                                                color: activeTab === tab.id ? 'var(--color-navy)' : 'var(--color-gray-light)',
+                                                padding: '4px 0',
+                                                borderBottom: activeTab === tab.id ? '2px solid var(--color-brand)' : '2px solid transparent',
+                                                transition: 'all 150ms',
+                                            }}
+                                        >
+                                            {tab.label}
+                                        </button>
                                         {activeTab === tab.id && (
-                                            <button onClick={() => renameTab(tab)} className="text-gray-400 hover:text-gray-600">{Icons.pencil({ size: 12 })}</button>
+                                            <button onClick={() => renameTab(tab)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-gray-light)', fontSize: 11 }}>
+                                                <i className="fas fa-pen"></i>
+                                            </button>
                                         )}
                                     </div>
                                 ))}
-                                <button onClick={addTab} className="text-gray-500 hover:text-gray-800 ml-1">{Icons.plus({ size: 16 })}</button>
+                                <button onClick={addTab} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', padding: 4 }}>
+                                    <i className="fas fa-plus"></i>
+                                </button>
                             </div>
                         )}
-                        <div className="flex-1 overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-                            {tabItems.length === 0 ? (
-                                <div className="text-center text-sm text-gray-300 py-20">No sections on this tab yet — add one from the left panel.</div>
-                            ) : (
-                                renderList(tabItems, activeTab)
-                            )}
-                        </div>
+
+                        {tabItems.length === 0 ? (
+                            <div className="canvas-empty-state">
+                                <i className="fas fa-layer-group icon"></i>
+                                <h3>Start building</h3>
+                                <p>Add blocks from the left panel to get started.</p>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                                    <button className="btn btn-primary btn-sm" onClick={() => dispatch({ type: 'ADD', blockType: 'SoundButton' })}>
+                                        <i className="fas fa-plus"></i> Add Sound Button
+                                    </button>
+                                    <button className="btn btn-secondary btn-sm" onClick={() => dispatch({ type: 'ADD', blockType: 'Playlist' })}>
+                                        <i className="fas fa-plus"></i> Add Playlist
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            tabItems.map((item, idx) => renderBlockWrapper(item, idx))
+                        )}
                     </div>
                 </div>
             );
@@ -1164,9 +1260,14 @@
         const RightSidebar = ({ selectedItem, tabs, dispatch }) => {
             if (!selectedItem) {
                 return (
-                    <div className="w-64 bg-white border-l border-gray-200 p-6 flex-shrink-0 overflow-y-auto">
-                        <div className="text-sm font-medium text-gray-900 mb-4">Properties</div>
-                        <div className="text-xs text-gray-400">Select a block to edit</div>
+                    <div className="builder-sidebar-right">
+                        <div className="prop-group">
+                            <div style={{ textAlign: 'center', padding: '40px 12px', color: 'var(--color-gray-light)' }}>
+                                <i className="fas fa-mouse-pointer" style={{ fontSize: 32, marginBottom: 12, opacity: 0.4, display: 'block' }}></i>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-navy)', marginBottom: 4 }}>No block selected</div>
+                                <div style={{ fontSize: 12 }}>Click a block on the canvas to edit its properties.</div>
+                            </div>
+                        </div>
                     </div>
                 );
             }
@@ -1174,66 +1275,85 @@
             const isSoundButton = selectedItem.type === 'SoundButton';
             const isPlaylist = selectedItem.type === 'Playlist';
             const isDivider = selectedItem.type === 'Divider';
+            const isCustomUploads = selectedItem.type === 'CustomUploads';
 
             return (
-                <div className="w-64 bg-white border-l border-gray-200 p-6 flex-shrink-0 overflow-y-auto">
-                    <div className="text-sm font-medium text-gray-900 mb-4">Properties</div>
-                    <div className="flex flex-col gap-4">
+                <div className="builder-sidebar-right">
+                    {/* Header */}
+                    <div style={{ padding: '16px', borderBottom: '1px solid var(--color-gray-lighter)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-navy)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {selectedItem.type.replace(/([A-Z])/g, ' $1').trim()}
+                        </div>
+                        <div style={{ flex: 1 }}></div>
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => dispatch({ type: 'SELECT', id: null })}>
+                            <i className="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    {/* Content section */}
+                    <div className="prop-group">
+                        <h4>Content</h4>
+
                         {isSoundButton && (
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Button Label</label>
+                            <div className="prop-field">
+                                <label>Button Label</label>
                                 <input type="text" value={selectedItem.props.label || ''}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, label: e.target.value } })}
-                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    className="input" />
+                                <div className="hint">Text shown on the button</div>
                             </div>
                         )}
-                        {!isSoundButton && !isPlaylist && !isDivider && (
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Title</label>
+
+                        {!isSoundButton && !isDivider && (
+                            <div className="prop-field">
+                                <label>Title</label>
                                 <input type="text" value={selectedItem.props.title || ''}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, title: e.target.value } })}
-                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    className="input" />
                             </div>
                         )}
+
                         {isDivider && (
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Label</label>
+                            <div className="prop-field">
+                                <label>Label</label>
                                 <input type="text" value={selectedItem.props.label || ''}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, label: e.target.value } })}
-                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    className="input" />
                             </div>
                         )}
-                        {isPlaylist && (
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Playlist Title</label>
-                                <input type="text" value={selectedItem.props.title || ''}
-                                    onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, title: e.target.value } })}
-                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
-                            </div>
-                        )}
-                        {'subtitle' in selectedItem.props && (
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-1.5">Helper text</label>
+
+                        {'subtitle' in selectedItem.props && !isSoundButton && !isDivider && (
+                            <div className="prop-field">
+                                <label>Description</label>
                                 <textarea rows="2" value={selectedItem.props.subtitle || ''}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, subtitle: e.target.value } })}
-                                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400 resize-none" />
+                                    className="textarea" />
+                                <div className="hint">Optional helper text</div>
                             </div>
                         )}
-                        <div>
-                            <label className="text-xs font-medium text-gray-500 block mb-1.5">Colour</label>
-                            <div className="flex items-center gap-2">
+                    </div>
+                    {/* Appearance section */}
+                    <div className="prop-group">
+                        <h4>Appearance</h4>
+                        <div className="prop-field">
+                            <label>Accent Colour</label>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                 <input type="color" value={selectedItem.props.color || '#1a1a2e'}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, color: e.target.value } })}
-                                    className="w-10 h-10 border border-gray-200 rounded-lg cursor-pointer" />
+                                    style={{ width: 40, height: 40, border: '1px solid var(--color-gray-lighter)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }} />
                                 <input type="text" value={selectedItem.props.color || '#1a1a2e'}
                                     onChange={e => dispatch({ type: 'UPDATE_PROPS', id: selectedItem.id, props: { ...selectedItem.props, color: e.target.value } })}
-                                    className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                                    className="input" style={{ flex: 1 }} />
                             </div>
                         </div>
-                        <div>
-                            <label className="text-xs font-medium text-gray-500 block mb-1.5">Tab</label>
-                            <select value={selectedItem.tab} onChange={e => dispatch({ type: 'SET_TAB', id: selectedItem.id, tab: e.target.value })}
-                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400">
+                    </div>
+
+                    {/* Layout section */}
+                    <div className="prop-group">
+                        <h4>Layout</h4>
+                        <div className="prop-field">
+                            <label>Tab</label>
+                            <select value={selectedItem.tab} onChange={e => dispatch({ type: 'SET_TAB', id: selectedItem.id, tab: e.target.value })} className="input">
                                 {tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                             </select>
                         </div>
@@ -1343,6 +1463,46 @@
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
 
+            // ================================================================
+            // UNDO / REDO
+            // ================================================================
+            const historyRef = useRef([state]);
+            const historyIndexRef = useRef(0);
+            const [canUndo, setCanUndo] = useState(false);
+            const [canRedo, setCanRedo] = useState(false);
+
+            // Push to history on meaningful changes
+            useEffect(() => {
+                const action = state.__lastAction;
+                if (!['ADD','DELETE','DUPLICATE','MOVE','REORDER','UPDATE_PROPS','SET_TAB','RENAME_TAB','ADD_TAB'].includes(action)) return;
+
+                const hist = historyRef.current.slice(0, historyIndexRef.current + 1);
+                hist.push(JSON.parse(JSON.stringify(state)));
+                if (hist.length > 50) hist.shift();
+                historyRef.current = hist;
+                historyIndexRef.current = hist.length - 1;
+                setCanUndo(historyIndexRef.current > 0);
+                setCanRedo(false);
+            }, [state]);
+
+            const undo = useCallback(() => {
+                if (historyIndexRef.current <= 0) return;
+                historyIndexRef.current--;
+                const prev = historyRef.current[historyIndexRef.current];
+                dispatch({ type: 'LOAD', state: prev });
+                setCanUndo(historyIndexRef.current > 0);
+                setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+            }, []);
+
+            const redo = useCallback(() => {
+                if (historyIndexRef.current >= historyRef.current.length - 1) return;
+                historyIndexRef.current++;
+                const next = historyRef.current[historyIndexRef.current];
+                dispatch({ type: 'LOAD', state: next });
+                setCanUndo(historyIndexRef.current > 0);
+                setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+            }, []);
+
             // Load site from server on mount
             useEffect(() => {
                 async function loadSite() {
@@ -1419,99 +1579,155 @@
                 }
             }, []);
 
-            if (loading) {
-                return <div className="h-screen flex items-center justify-center">Loading...</div>;
-            }
-
+            // SAVE TO SERVER
             const handleSaveClick = async () => {
                 if (saving) return;
                 setSaving(true);
                 try { await publishLayout(state, notify); } finally { setSaving(false); }
             };
 
+            // Keyboard shortcuts
+            useEffect(() => {
+                const handleKey = (e) => {
+                    // Skip if typing in an input
+                    if (e.target.matches('input, textarea, select')) return;
+
+                    // Ctrl/Cmd + S = Save
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        if (!saving) handleSaveClick();
+                        return;
+                    }
+                    // Ctrl/Cmd + Z = Undo
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                        e.preventDefault();
+                        undo();
+                        return;
+                    }
+                    // Ctrl/Cmd + Shift + Z = Redo
+                    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+                        e.preventDefault();
+                        redo();
+                        return;
+                    }
+                    // Delete = Remove selected
+                    if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId) {
+                        e.preventDefault();
+                        dispatch({ type: 'DELETE', id: state.selectedId });
+                        return;
+                    }
+                    // Escape = Deselect
+                    if (e.key === 'Escape') {
+                        dispatch({ type: 'SELECT', id: null });
+                        return;
+                    }
+                    // P = Toggle preview
+                    if (e.key === 'p' && !e.ctrlKey && !e.metaKey) {
+                        setPreviewMode(m => !m);
+                        return;
+                    }
+                };
+                document.addEventListener('keydown', handleKey);
+                return () => document.removeEventListener('keydown', handleKey);
+            }, [state.selectedId, saving, handleSaveClick]);
+
+            if (loading) {
+                return (
+                    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-subtle)' }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div className="skeleton" style={{ width: 200, height: 24, marginBottom: 12 }}></div>
+                            <div className="skeleton" style={{ width: 300, height: 16 }}></div>
+                        </div>
+                    </div>
+                );
+            }
             return (
-                <div className="h-screen w-screen flex flex-col bg-slate-50 overflow-hidden">
-                    <div className="topbar-redesign" style={{
-                        background: state.topBarColor || '#ffffff',
-                        borderBottom: '1px solid var(--color-gray-lighter)',
-                        padding: '12px 24px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '16px',
-                        position: 'relative'
-                    }}>
+                <div className="builder-shell">
+                    {/* Topbar */}
+                    <div className="builder-topbar">
                         {/* LEFT: Back to Dashboard */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                            <a href="/dashboard.html" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
-                                <i className="fas fa-arrow-left"></i> Dashboard
-                            </a>
+                        <a href="/dashboard.html" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none', flexShrink: 0 }}>
+                            <i className="fas fa-arrow-left"></i> Dashboard
+                        </a>
+
+                        <div style={{ width: 1, height: 24, background: 'var(--color-gray-lighter)', flexShrink: 0 }}></div>
+
+                        {/* UNDO / REDO */}
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            <button className="btn btn-ghost btn-icon btn-sm" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+                                <i className="fas fa-undo"></i>
+                            </button>
+                            <button className="btn btn-ghost btn-icon btn-sm" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
+                                <i className="fas fa-redo"></i>
+                            </button>
                         </div>
 
-                        {/* CENTER: Logo (if uploaded) + Site name */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '16px',
-                            flex: 1,
-                            minWidth: 0
-                        }}>
+                        {/* CENTER: Logo + Site name */}
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, minWidth: 0 }}>
                             {state.logoUrl && (
-                                <img
-                                    src={state.logoUrl}
-                                    alt="Logo"
-                                    style={{ maxHeight: 40, width: 'auto', objectFit: 'contain' }}
-                                />
+                                <img src={state.logoUrl} alt="Logo" style={{ maxHeight: 36, width: 'auto', objectFit: 'contain' }} />
                             )}
                             <input
                                 type="text"
                                 value={state.siteName}
                                 onChange={(e) => dispatch({ type: 'SET_NAME', name: e.target.value })}
                                 className="input"
-                                style={{ width: 260, fontWeight: 600, textAlign: 'center' }}
+                                style={{ width: 240, fontWeight: 600, textAlign: 'center', border: 'none', background: 'transparent' }}
+                                placeholder="Untitled Site"
                             />
                         </div>
 
                         {/* RIGHT: Actions */}
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                             <button
-                                className="btn btn-secondary btn-sm"
+                                className="btn btn-ghost btn-sm"
                                 onClick={() => document.getElementById('logoInput').click()}
                                 disabled={logoUploading}
+                                title="Upload logo"
                             >
-                                {logoUploading ? <><span className="spinner"></span> Uploading…</> : <><i className="fas fa-image"></i> Upload Logo</>}
+                                <i className="fas fa-image"></i> Logo
                             </button>
-                            <input
-                                id="logoInput"
-                                type="file"
-                                accept="image/*"
-                                style={{ display: 'none' }}
-                                onChange={handleLogoUpload}
-                                disabled={logoUploading}
-                            />
+                            <input id="logoInput" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} disabled={logoUploading} />
+
                             {state.logoUrl && (
                                 <button
-                                    className="btn btn-secondary btn-sm"
+                                    className="btn btn-ghost btn-icon btn-sm"
                                     onClick={() => dispatch({ type: 'SET_LOGO', url: '' })}
                                     title="Remove logo"
+                                    style={{ color: 'var(--color-danger)' }}
                                 >
                                     <i className="fas fa-times"></i>
                                 </button>
                             )}
-                            <button className="btn btn-secondary btn-sm" onClick={() => setPreviewMode(!previewMode)}>
-                                <i className={`fas ${previewMode ? 'fa-pencil' : 'fa-eye'}`}></i> {previewMode ? 'Edit' : 'Preview'}
+
+                            <div style={{ width: 1, height: 24, background: 'var(--color-gray-lighter)' }}></div>
+
+                            <button
+                                className={`btn btn-sm ${previewMode ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setPreviewMode(!previewMode)}
+                                title="Toggle preview (P)"
+                            >
+                                <i className={`fas ${previewMode ? 'fa-pencil' : 'fa-eye'}`}></i>
+                                {previewMode ? 'Edit' : 'Preview'}
                             </button>
+
                             <button className="btn btn-primary btn-sm" onClick={handleSaveClick} disabled={saving}>
-                                {saving ? <><span className="spinner"></span> Saving…</> : <><i className="fas fa-check"></i> Save</>}
+                                {saving ? (
+                                    <><span className="spinner"></span> Saving…</>
+                                ) : (
+                                    <><i className="fas fa-check"></i> Save</>
+                                )}
                             </button>
                         </div>
                     </div>
-                    <div className="flex-1 flex overflow-hidden">
-                        {!previewMode && <LeftSidebar state={state} dispatch={dispatch} notify={notify} />}
+
+                    {/* Body */}
+                    <div className="builder-body">
+                        {!previewMode && <LeftSidebar state={state} dispatch={dispatch} notify={notify} audioCtx={audioCtx} />}
                         <Canvas state={state} dispatch={dispatch} notify={notify} previewMode={previewMode} audioCtx={audioCtx} />
                         {!previewMode && <RightSidebar selectedItem={selectedItem} tabs={state.tabs} dispatch={dispatch} />}
                     </div>
+
                     <ToastStack toasts={toasts} />
                 </div>
             );
