@@ -181,10 +181,19 @@
             <div class="logo-mark" style="width:48px;height:48px;font-size:24px;margin-bottom:var(--space-6);">P</div>
             <h1 class="t-h2" style="margin-bottom:var(--space-2);">Welcome back</h1>
             <p class="t-body" style="margin-bottom:var(--space-8);">Sign in to manage your event sites.</p>
+            
+            <label class="label">Email</label>
+            <input type="email" id="emailInput" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:var(--space-4);" />
+            
             <label class="label">Password</label>
-            <input type="password" id="passwordInput" class="input input-lg" placeholder="Enter admin password" autofocus style="margin-bottom:var(--space-4);" />
+            <input type="password" id="passwordInput" class="input input-lg" placeholder="Enter your password" style="margin-bottom:var(--space-4);" />
+            
             <button class="btn btn-primary btn-lg btn-full" id="loginBtn">Sign In</button>
-            <div class="login-error" id="loginError" style="color:var(--color-danger);font-size:var(--text-sm);margin-top:var(--space-3);display:none;">Incorrect password. Please try again.</div>
+            <div class="login-error" id="loginError" style="color:var(--color-danger);font-size:var(--text-sm);margin-top:var(--space-3);display:none;"></div>
+            
+            <p class="t-sm" style="text-align:center;margin-top:var(--space-6);">
+                Don't have an account? <a href="#" id="signupLink" style="color:var(--color-brand);font-weight:600;">Sign up</a>
+            </p>
         </div>
     </div>
 
@@ -227,90 +236,84 @@
     </div>
 
     <script>
+        // ================================================================
+        // CONFIG
+        // ================================================================
+        const SUPABASE_URL = '';  // not needed on frontend since we proxy via server
         const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
         const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
 
-        let token = localStorage.getItem('podiumToken');
+        // ================================================================
+        // AUTH STATE
+        // ================================================================
+        let session = null;
+        let user = null;
+
+        // Load session from localStorage
+        try {
+            const saved = localStorage.getItem('podiumSession');
+            if (saved) session = JSON.parse(saved);
+            const savedUser = localStorage.getItem('podiumUser');
+            if (savedUser) user = JSON.parse(savedUser);
+        } catch (e) {}
+
         const loginOverlay = document.getElementById('loginOverlay');
         const dashboardContent = document.getElementById('dashboardContent');
 
-        function showLogin() {
-            loginOverlay.style.display = 'flex';
-            dashboardContent.style.display = 'none';
-        }
-        function showDashboard() {
-            loginOverlay.style.display = 'none';
-            dashboardContent.style.display = 'block';
-        }
+        function showLogin() { loginOverlay.style.display = 'flex'; dashboardContent.style.display = 'none'; }
+        function showDashboard() { loginOverlay.style.display = 'none'; dashboardContent.style.display = 'block'; }
 
+        // ================================================================
+        // API HELPER
+        // ================================================================
         async function apiFetch(endpoint, options = {}) {
             const headers = { 'Content-Type': 'application/json', ...options.headers };
-            if (token) headers['Authorization'] = 'Bearer ' + token;
+            if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
             const resp = await fetch(endpoint, { ...options, headers });
+
             if (resp.status === 401) {
-                localStorage.removeItem('podiumToken');
-                token = null;
-                throw new Error('Unauthorized');
+                localStorage.removeItem('podiumSession');
+                localStorage.removeItem('podiumUser');
+                session = null; user = null;
+                showLogin();
+                throw new Error('Session expired. Please log in again.');
             }
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'API error');
             return data;
         }
 
-        async function login(password) {
-            try {
-                const resp = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password }),
-                });
-                const data = await resp.json();
-                if (data.success) {
-                    localStorage.setItem('podiumToken', data.token);
-                    token = data.token;
-                    showDashboard();
-                    loadSites();
-                } else {
-                    document.getElementById('loginError').style.display = 'block';
-                }
-            } catch (e) {
-                document.getElementById('loginError').style.display = 'block';
-            }
+        // ================================================================
+        // LOGIN / SIGNUP
+        // ================================================================
+        async function doLogin(email, password) {
+            const resp = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Login failed');
+
+            session = data.session;
+            user = data.user;
+            localStorage.setItem('podiumSession', JSON.stringify(session));
+            localStorage.setItem('podiumUser', JSON.stringify(user));
+
+            showDashboard();
+            await loadSites();
         }
 
-        document.getElementById('loginBtn').addEventListener('click', () => login(document.getElementById('passwordInput').value));
-        document.getElementById('passwordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(e.target.value); });
-        document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('podiumToken'); location.reload(); });
-
-        // ===== Sites (loaded from server, shared across all devices) =====
+        // ================================================================
+        // SITES
+        // ================================================================
         let sites = [];
+
         async function loadSites() {
             try {
-                const resp = await fetch('/api/load-manifest?t=' + Date.now(), {
-                    cache: 'no-store',
-                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
-                });
-                const data = await resp.json();
-                sites = data.sites || [];
-            } catch (e) {
-                console.warn('Failed to load sites:', e);
-                sites = [];
-            }
-            renderSites();
-        }
-        async function saveSiteList() {
-            try {
-                await fetch('/api/save-manifest', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,
-                    },
-                    body: JSON.stringify({ sites }),
-                });
-            } catch (e) {
-                console.error('Failed to save manifest:', e);
-            }
+                sites = await apiFetch('/api/sites');
+                renderSites();
+            } catch (e) { console.error(e); }
         }
 
         function renderSites(search = '') {
@@ -320,7 +323,7 @@
                 const q = search.trim().toLowerCase();
                 filtered = filtered.filter(s => s.name.toLowerCase().includes(q));
             }
-            filtered.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+            filtered.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
             if (filtered.length === 0) {
                 grid.innerHTML = `
@@ -339,9 +342,15 @@
                     </div>
                     <div class="project-body">
                         <div class="project-title">${site.name}</div>
-                        <div class="project-meta"><i class="fas fa-clock"></i> Updated ${new Date(site.updatedAt).toLocaleDateString()}</div>
+                        <div class="project-meta"><i class="fas fa-clock"></i> Updated ${new Date(site.updated_at).toLocaleDateString()}</div>
                         <div class="project-actions">
-                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}" title="Open presenter in new tab">
+                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}"><i class="fas fa-external-link-alt"></i> Launch</button>
+                            <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i></button>
+                            <button class="btn btn-sm btn-ghost delete-btn" style="color:var(--color-danger);"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
                                 <i class="fas fa-external-link-alt"></i> Launch
                             </button>
                             <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i> Edit</button>
@@ -353,127 +362,127 @@
 
             grid.querySelectorAll('.project-card').forEach(card => {
                 const id = card.dataset.id;
-                renderThumbnail(id);
                 card.addEventListener('click', (e) => { if (!e.target.closest('button')) openSite(id); });
+                card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
                 card.querySelector('.launch-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     window.open(`viewer.html?site=${id}`, '_blank');
                 });
-                card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
                 card.querySelector('.delete-btn').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     if (!confirm('Delete this site?')) return;
-                    sites = sites.filter(s => s.id !== id);
-                    await saveSiteList();   // ← now saves to server
-                    renderSites();
+                    await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
+                    await loadSites();
                 });
+                renderThumbnail(id);
             });
         }
 
         async function renderThumbnail(siteId) {
             try {
-                const resp = await fetch(`/api/load-site/${siteId}?t=${Date.now()}`);
-                if (!resp.ok) return;
-                const site = await resp.json();
+                const site = await apiFetch(`/api/sites/${siteId}`);
                 const el = document.querySelector(`[data-preview-id="${siteId}"]`);
-                if (!el) return;
+                if (!el || !site.data) return;
+                const d = site.data;
 
-                // Render a mini preview
                 el.innerHTML = `
-                    <div style="
-                        width: 100%; height: 100%;
-                        background: ${site.bgColor || '#F8F9FA'};
-                        display: flex; flex-direction: column; align-items: center;
-                        padding: 12px; gap: 6px; overflow: hidden;
-                    ">
-                        ${site.logoUrl ? `<img src="${site.logoUrl}" style="max-height:24px; max-width:80%; object-fit:contain;" />` : ''}
-                        <div style="font-weight:700; color:#11233B; font-size:11px; text-align:center; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                            ${site.name || 'Untitled'}
-                        </div>
-                        <div style="
-                            width: 85%; height: 60%;
-                            background: #fff;
-                            border-radius: 6px;
-                            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-                            display: flex; flex-direction: column; gap: 3px;
-                            padding: 6px;
-                            overflow: hidden;
-                        ">
-                            ${(site.components || []).slice(0, 4).map(c => {
-                                if (c.type === 'SoundButton') return `<div style="background:#11233B; height:8px; border-radius:4px;"></div>`;
-                                if (c.type === 'Playlist') return `<div style="background:#0090A8; height:8px; border-radius:4px;"></div>`;
-                                if (c.type === 'ProgressControls') return `<div style="background:#E5E7EB; height:5px; border-radius:2px;"></div>`;
-                                if (c.type === 'Divider') return `<div style="background:#D1D5DB; height:1px; margin:2px 0;"></div>`;
-                                if (c.type === 'SlidesManager') return `<div style="background:#F3F4F6; height:20px; border-radius:4px;"></div>`;
-                                return `<div style="background:#E5E7EB; height:8px; border-radius:4px;"></div>`;
+                    <div style="width:100%;height:100%;background:${d.bgColor || '#F8F9FA'};display:flex;flex-direction:column;align-items:center;padding:12px;gap:6px;overflow:hidden;">
+                        ${d.logoUrl ? `<img src="${d.logoUrl}" style="max-height:24px;max-width:80%;object-fit:contain;" />` : ''}
+                        <div style="font-weight:700;color:#11233B;font-size:11px;text-align:center;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${site.name}</div>
+                        <div style="width:85%;height:60%;background:#fff;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:3px;padding:6px;overflow:hidden;">
+                            ${(d.components || []).slice(0, 4).map(c => {
+                                if (c.type === 'SoundButton') return `<div style="background:#11233B;height:8px;border-radius:4px;"></div>`;
+                                if (c.type === 'Playlist') return `<div style="background:#0090A8;height:8px;border-radius:4px;"></div>`;
+                                if (c.type === 'ProgressControls') return `<div style="background:#E5E7EB;height:5px;border-radius:2px;"></div>`;
+                                if (c.type === 'Divider') return `<div style="background:#D1D5DB;height:1px;margin:2px 0;"></div>`;
+                                return `<div style="background:#E5E7EB;height:8px;border-radius:4px;"></div>`;
                             }).join('')}
                         </div>
                     </div>
                 `;
-            } catch (e) {
-                console.warn('Thumbnail load failed:', e);
-            }
+            } catch (e) {}
         }
 
         function openSite(id) { window.location.href = `builder.html?site=${id}`; }
 
         async function createNewSite() {
-            const id = 'site-' + Date.now();
-            const newSite = {
-                id,
-                name: 'Untitled Site',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
-
-            // Add to manifest
-            sites.push(newSite);
-            await saveSiteList();
-
-            // Save initial empty site JSON
             try {
-                await fetch('/api/save-site', {
+                const site = await apiFetch('/api/sites', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,
-                    },
-                    body: JSON.stringify({
-                        siteId: id,
-                        siteData: {
-                            id,
-                            name: newSite.name,
-                            components: [],
-                            tabs: [{ id: 'main', label: 'Main' }],
-                            activeTab: 'main',
-                            logoUrl: '',
-                            bgColor: '#ffffff',
-                            topBarColor: '#ffffff',
-                            media: [],
-                            updatedAt: new Date().toISOString(),
-                        }
-                    }),
+                    body: JSON.stringify({ name: 'Untitled Site' }),
                 });
+                window.location.href = `builder.html?site=${site.id}`;
             } catch (e) {
-                console.error('Failed to save initial site:', e);
+                alert('Failed to create site: ' + e.message);
             }
-
-            window.location.href = `builder.html?site=${id}`;
         }
+
+        // ================================================================
+        // EVENT BINDING
+        // ================================================================
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('emailInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            if (!email || !password) {
+                document.getElementById('loginError').textContent = 'Please enter email and password';
+                document.getElementById('loginError').style.display = 'block';
+                return;
+            }
+            try {
+                await doLogin(email, password);
+            } catch (e) {
+                document.getElementById('loginError').textContent = e.message;
+                document.getElementById('loginError').style.display = 'block';
+            }
+        });
+
+        document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('loginBtn').click();
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('podiumSession');
+            localStorage.removeItem('podiumUser');
+            session = null; user = null;
+            location.reload();
+        });
 
         document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
         document.getElementById('heroCreateBtn').addEventListener('click', createNewSite);
         document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
 
-        // ===== Boot =====
+        document.getElementById('signupLink')?.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = prompt('Enter your email:');
+            if (!email) return;
+            const password = prompt('Enter a password (min 8 characters):');
+            if (!password || password.length < 8) return alert('Password must be at least 8 characters');
+            
+            try {
+                const resp = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error);
+                alert('Account created! You can now log in.');
+            } catch (e) {
+                alert('Sign-up failed: ' + e.message);
+            }
+        });
+
+        // ================================================================
+        // BOOT
+        // ================================================================
         showLogin();
-        if (token) {
-            fetch('/api/verify', { headers: { 'Authorization': 'Bearer ' + token } })
+        if (session?.access_token) {
+            fetch('/api/verify', { headers: { 'Authorization': 'Bearer ' + session.access_token } })
                 .then(r => {
                     if (r.ok) { showDashboard(); loadSites(); }
-                    else { localStorage.removeItem('podiumToken'); token = null; showLogin(); }
+                    else { localStorage.removeItem('podiumSession'); localStorage.removeItem('podiumUser'); session = null; showLogin(); }
                 })
-                .catch(() => { localStorage.removeItem('podiumToken'); token = null; showLogin(); });
+                .catch(() => { showLogin(); });
         }
     </script>
     <div style="text-align:center;padding:24px;color:#94a3b8;font-size:13px;">

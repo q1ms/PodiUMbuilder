@@ -464,18 +464,15 @@
                 const siteId = params.get('site');
                 if (!siteId) { setError('No site ID provided.'); setLoading(false); return; }
 
-                // Force no-cache fetch
-                fetch(`/api/load-site/${siteId}?t=${Date.now()}`, {
-                    cache: 'no-store',
-                    headers: {
-                        'Cache-Control': 'no-cache',
-                        'Pragma': 'no-cache'
-                    }
-                })
-                    .then(r => { if (!r.ok) throw new Error('Failed to load'); return r.json(); })
-                    .then(data => {
-                        setSite(data);
-                        setActiveTab(data.activeTab || data.tabs?.[0]?.id || 'main');
+                fetch(`/api/sites/${siteId}`)
+                    .then(r => {
+                        if (!r.ok) throw new Error('Site not found');
+                        return r.json();
+                    })
+                    .then(site => {
+                        // Merge top-level name with nested data
+                        setSite({ ...site.data, name: site.name });
+                        setActiveTab(site.data?.activeTab || 'main');
                         setLoading(false);
                     })
                     .catch(e => { setError(e.message); setLoading(false); });

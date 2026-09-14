@@ -484,64 +484,30 @@
         // ================================================================
         async function saveSite(state) {
             try {
-                const siteData = {
-                    id: state.siteId,
-                    name: state.siteName,
-                    components: state.components,
-                    tabs: state.tabs,
-                    activeTab: state.activeTab,
-                    logoUrl: state.logoUrl,
-                    bgColor: state.bgColor,
-                    topBarColor: state.topBarColor,
-                    media: state.media,
-                    updatedAt: new Date().toISOString(),
-                };
+                const session = JSON.parse(localStorage.getItem('podiumSession') || 'null');
+                if (!session?.access_token) throw new Error('No session');
 
-                // Save site
-                const resp = await fetch('/api/save-site', {
-                    method: 'POST',
+                const resp = await fetch(`/api/sites/${state.siteId}`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,
+                        'Authorization': 'Bearer ' + session.access_token,
                     },
-                    body: JSON.stringify({ siteId: state.siteId, siteData }),
-                });
-                if (!resp.ok) throw new Error('Save failed');
-
-                // Update manifest (loaded from server, then re-saved)
-                try {
-                    const manifestResp = await fetch('/api/load-manifest?t=' + Date.now());
-                    const manifest = await manifestResp.json();
-                    const siteList = manifest.sites || [];
-                    const idx = siteList.findIndex(s => s.id === state.siteId);
-                    if (idx !== -1) {
-                        siteList[idx].name = state.siteName;
-                        siteList[idx].updatedAt = new Date().toISOString();
-                        siteList[idx].logoUrl = state.logoUrl;
-                        siteList[idx].bgColor = state.bgColor;
-                    } else {
-                        siteList.push({
-                            id: state.siteId,
-                            name: state.siteName,
+                    body: JSON.stringify({
+                        name: state.siteName,
+                        data: {
+                            components: state.components,
+                            tabs: state.tabs,
+                            activeTab: state.activeTab,
                             logoUrl: state.logoUrl,
                             bgColor: state.bgColor,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
-                        });
-                    }
-                    await fetch('/api/save-manifest', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + token,
+                            topBarColor: state.topBarColor,
+                            media: state.media,
                         },
-                        body: JSON.stringify({ sites: siteList }),
-                    });
-                } catch (e) {
-                    console.warn('Manifest update failed:', e);
-                }
-
-                console.log('✅ Saved and synced to server');
+                    }),
+                });
+                if (!resp.ok) throw new Error('Save failed');
+                console.log('✅ Saved to Supabase');
             } catch (e) {
                 console.error('Save failed:', e);
             }
@@ -1377,20 +1343,32 @@
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
 
-            // Load site from Cloudinary on mount
+            // Load site from server on mount
             useEffect(() => {
                 async function loadSite() {
                     if (!siteId) { window.location.href = '/dashboard.html'; return; }
                     try {
-                        const resp = await fetch(`/api/load-site/${siteId}`);
-                        if (resp.ok) {
-                            const site = await resp.json();
-                            dispatch({ type: 'LOAD', state: site });
-                        } else {
-                            window.location.href = '/dashboard.html';
-                        }
+                        const session = JSON.parse(localStorage.getItem('podiumSession') || 'null');
+                        if (!session?.access_token) { window.location.href = '/dashboard.html'; return; }
+
+                        const resp = await fetch(`/api/sites/${siteId}`, {
+                            headers: { 'Authorization': 'Bearer ' + session.access_token },
+                        });
+                        if (!resp.ok) { window.location.href = '/dashboard.html'; return; }
+                        const site = await resp.json();
+                        
+                        // Merge with our internal state shape
+                        dispatch({
+                            type: 'LOAD',
+                            state: {
+                                siteId: site.id,
+                                siteName: site.name,
+                                ...site.data,
+                            }
+                        });
                     } catch (e) {
                         console.error('Load failed:', e);
+                        window.location.href = '/dashboard.html';
                     }
                     setLoading(false);
                 }
