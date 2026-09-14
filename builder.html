@@ -32,6 +32,7 @@
         .sidebar-tab:hover { color: #1a1a2e; }
         .sidebar-tab-content { animation: fadeSlide 0.3s ease; }
         @keyframes fadeSlide { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .section-divider { display: flex; align-items: center; gap: 12px; padding: 4px 0; width: 100%; }
         .section-divider .line { flex: 1; height: 2px; background: #d1d5db; border-radius: 2px; }
         .section-divider .label-input { font-size: 0.8rem; font-weight: 600; color: #1a1a2e; border: none; background: transparent; padding: 2px 6px; border-radius: 4px; min-width: 60px; text-align: center; }
@@ -488,18 +489,15 @@
         // ================================================================
         async function saveSite(state) {
             try {
-                // Get session from localStorage
                 const sessionData = JSON.parse(localStorage.getItem('podiumSession') || 'null');
                 if (!sessionData?.access_token) {
-                    console.error('❌ No session found. Please log in again.');
-                    window.location.href = '/dashboard.html';
+                    console.warn('No session — skipping save');
                     return;
                 }
 
-                // Validate siteId format (Supabase UUID)
-                const siteId = state.siteId || state._id;
+                const siteId = state.siteId;
                 if (!siteId) {
-                    console.error('❌ No siteId in state:', state);
+                    console.warn('No siteId — skipping save');
                     return;
                 }
 
@@ -516,7 +514,7 @@
                     },
                 };
 
-                console.log('💾 Saving site:', siteId, 'Payload size:', JSON.stringify(payload).length, 'bytes');
+                console.log('💾 Saving site:', siteId);
 
                 const resp = await fetch(`/api/sites/${siteId}`, {
                     method: 'PUT',
@@ -527,64 +525,16 @@
                     body: JSON.stringify(payload),
                 });
 
-                // Log response details
-                console.log('📥 Response status:', resp.status, resp.statusText);
-
-                // Try to parse response
-                let responseBody;
-                try {
-                    responseBody = await resp.json();
-                } catch (e) {
-                    responseBody = { error: 'Non-JSON response from server' };
-                }
+                console.log('📥 Save status:', resp.status);
 
                 if (!resp.ok) {
-                    console.error('❌ Save error:', responseBody);
-
-                    // If 404, the site doesn't exist — create it
-                    if (resp.status === 404) {
-                        console.log('🔄 Site not found, creating instead...');
-                        const createResp = await fetch('/api/sites', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': 'Bearer ' + sessionData.access_token,
-                            },
-                            body: JSON.stringify(payload),
-                        });
-                        if (createResp.ok) {
-                            const newSite = await createResp.json();
-                            // Update the URL with the new site ID
-                            const url = new URL(window.location);
-                            url.searchParams.set('site', newSite.id);
-                            window.history.replaceState({}, '', url);
-                            console.log('✅ Site created with new ID:', newSite.id);
-                            return;
-                        }
-                    }
-
-                    // If 401, session expired
-                    if (resp.status === 401) {
-                        localStorage.removeItem('podiumSession');
-                        localStorage.removeItem('podiumUser');
-                        alert('Session expired. Please log in again.');
-                        window.location.href = '/dashboard.html';
-                        return;
-                    }
-
-                    // If 413, payload too large
-                    if (resp.status === 413) {
-                        alert('Site is too large to save. Remove some blocks or media.');
-                        return;
-                    }
-
-                    throw new Error(responseBody.error || `HTTP ${resp.status}`);
+                    const errBody = await resp.json().catch(() => ({}));
+                    console.error('❌ Save failed:', errBody);
+                    return;
                 }
-
-                console.log('✅ Saved to Supabase:', siteId);
+                console.log('✅ Saved');
             } catch (e) {
-                console.error('❌ Save failed:', e);
-                // Don't spam the user with alerts on every auto-save; just log
+                console.error('❌ Save exception:', e);
             }
         }
 
@@ -1533,6 +1483,7 @@
 
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
+            const [error, setError] = useState(null);
 
             // ================================================================
             // UNDO / REDO
@@ -1577,31 +1528,80 @@
             // Load site from server on mount
             useEffect(() => {
                 async function loadSite() {
-                    if (!siteId) { window.location.href = '/dashboard.html'; return; }
-                    try {
-                        const session = JSON.parse(localStorage.getItem('podiumSession') || 'null');
-                        if (!session?.access_token) { window.location.href = '/dashboard.html'; return; }
-
-                        const resp = await fetch(`/api/sites/${siteId}`, {
-                            headers: { 'Authorization': 'Bearer ' + session.access_token },
-                        });
-                        if (!resp.ok) { window.location.href = '/dashboard.html'; return; }
-                        const site = await resp.json();
-                        
-                        // Merge with our internal state shape
-                        dispatch({
-                            type: 'LOAD',
-                            state: {
-                                siteId: site.id,
-                                siteName: site.name,
-                                ...site.data,
-                            }
-                        });
-                    } catch (e) {
-                        console.error('Load failed:', e);
+                    const params = new URLSearchParams(window.location.search);
+                    const siteId = params.get('site');
+                    
+                    console.log('🔍 Loading site. SiteId from URL:', siteId);
+                    
+                    if (!siteId) {
+                        console.warn('⚠️ No site ID in URL. Redirecting to dashboard.');
                         window.location.href = '/dashboard.html';
+                        return;
                     }
-                    setLoading(false);
+
+                    const sessionData = JSON.parse(localStorage.getItem('podiumSession') || 'null');
+                    if (!sessionData?.access_token) {
+                        console.warn('⚠️ No session. Redirecting to dashboard.');
+                        window.location.href = '/dashboard.html';
+                        return;
+                    }
+
+                    try {
+                        console.log('🔄 Fetching from API...');
+                        const resp = await fetch(`/api/sites/${siteId}`, {
+                            headers: { 'Authorization': 'Bearer ' + sessionData.access_token },
+                        });
+                        
+                        console.log('📥 Response status:', resp.status);
+                        
+                        const contentType = resp.headers.get('content-type') || '';
+                        if (!contentType.includes('application/json')) {
+                            const text = await resp.text();
+                            console.error('❌ Non-JSON response:', text.substring(0, 200));
+                            setError('Server error. Please try again.');
+                            setLoading(false);
+                            return;
+                        }
+
+                        const site = await resp.json();
+                        console.log('📥 Site data received:', site);
+
+                        if (resp.status === 401) {
+                            localStorage.removeItem('podiumSession');
+                            localStorage.removeItem('podiumUser');
+                            window.location.href = '/dashboard.html';
+                            return;
+                        }
+
+                        if (!resp.ok) {
+                            console.error('❌ Load failed:', site);
+                            setError(site.error || 'Site not found');
+                            setLoading(false);
+                            return;
+                        }
+
+                        // Merge name + nested data
+                        const loadedState = {
+                            siteId: site.id,
+                            siteName: site.name || 'Untitled Site',
+                            components: site.data?.components || [],
+                            tabs: site.data?.tabs || [{ id: 'main', label: 'Main' }],
+                            activeTab: site.data?.activeTab || 'main',
+                            logoUrl: site.data?.logoUrl || '',
+                            bgColor: site.data?.bgColor || '#ffffff',
+                            topBarColor: site.data?.topBarColor || '#ffffff',
+                            media: site.data?.media || [],
+                            selectedId: null,
+                        };
+
+                        console.log('✅ Dispatching LOAD with state:', loadedState);
+                        dispatch({ type: 'LOAD', state: loadedState });
+                        setLoading(false);
+                    } catch (e) {
+                        console.error('❌ Load exception:', e);
+                        setError('Failed to load: ' + e.message);
+                        setLoading(false);
+                    }
                 }
                 loadSite();
             }, []);
@@ -1702,12 +1702,25 @@
                 return () => document.removeEventListener('keydown', handleKey);
             }, [state.selectedId, saving, handleSaveClick]);
 
+            if (error) {
+                return (
+                    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8F9FA' }}>
+                        <div style={{ textAlign: 'center', padding: 24 }}>
+                            <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
+                            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#11233B', marginBottom: 8 }}>Failed to load site</h2>
+                            <p style={{ color: '#6B7280', marginBottom: 20 }}>{error}</p>
+                            <a href="/dashboard.html" className="btn btn-primary">Back to Dashboard</a>
+                        </div>
+                    </div>
+                );
+            }
+
             if (loading) {
                 return (
-                    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-subtle)' }}>
+                    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8F9FA' }}>
                         <div style={{ textAlign: 'center' }}>
-                            <div className="skeleton" style={{ width: 200, height: 24, marginBottom: 12 }}></div>
-                            <div className="skeleton" style={{ width: 300, height: 16 }}></div>
+                            <div style={{ width: 40, height: 40, border: '3px solid #E5E7EB', borderTopColor: '#0090A8', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }}></div>
+                            <div style={{ fontSize: 14, color: '#6B7280' }}>Loading builder…</div>
                         </div>
                     </div>
                 );
