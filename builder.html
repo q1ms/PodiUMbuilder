@@ -289,26 +289,58 @@
         };
 
         // ================================================================
-        // API HELPERS
+        // SESSION CHECK (Supabase format)
         // ================================================================
-        const token = localStorage.getItem('podiumToken');
-        if (!token) {
+        function getSession() {
+            try {
+                const raw = localStorage.getItem('podiumSession');
+                if (!raw) return null;
+                const session = JSON.parse(raw);
+                if (!session?.access_token) return null;
+                return session;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        const session = getSession();
+        if (!session) {
             window.location.href = '/dashboard.html';
         }
 
+        // ================================================================
+        // API HELPERS
+        // ================================================================
         async function apiFetch(endpoint, options = {}) {
+            const currentSession = getSession();
+            if (!currentSession?.access_token) {
+                window.location.href = '/dashboard.html';
+                throw new Error('No session');
+            }
+
             const headers = {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token,
+                'Authorization': 'Bearer ' + currentSession.access_token,
                 ...options.headers,
             };
+
             const resp = await fetch(endpoint, { ...options, headers });
+
             if (resp.status === 401) {
-                localStorage.removeItem('podiumToken');
+                localStorage.removeItem('podiumSession');
+                localStorage.removeItem('podiumUser');
                 window.location.href = '/dashboard.html';
                 throw new Error('Unauthorized');
             }
-            return resp.json();
+
+            const contentType = resp.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('Server error: non-JSON response');
+            }
+
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'API error');
+            return data;
         }
 
         // ================================================================
@@ -1475,15 +1507,18 @@
             const [toasts, notify] = useToasts();
             const [loading, setLoading] = useState(true);
             const [saving, setSaving] = useState(false);
+            const [error, setError] = useState(null);
             const selectedItem = state.components.find(c => c.id === state.selectedId) || null;
             const audioCtx = useContext(AudioContext);
+
+            // Ensure session is available
+            const session = getSession();
 
             // Expose audioCtx globally for CustomUploads buttons
             useEffect(() => { window.__audioCtx = audioCtx; }, [audioCtx]);
 
             const [logoUploading, setLogoUploading] = useState(false);
             const [logoProgress, setLogoProgress] = useState(0);
-            const [error, setError] = useState(null);
 
             // ================================================================
             // UNDO / REDO
