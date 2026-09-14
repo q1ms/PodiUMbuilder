@@ -289,22 +289,27 @@
         };
 
         // ================================================================
-        // SESSION CHECK (Supabase format)
+        // SESSION & SITE ID (Global - available to all functions)
         // ================================================================
         function getSession() {
             try {
                 const raw = localStorage.getItem('podiumSession');
                 if (!raw) return null;
-                const session = JSON.parse(raw);
-                if (!session?.access_token) return null;
-                return session;
+                const s = JSON.parse(raw);
+                return s?.access_token ? s : null;
             } catch (e) {
                 return null;
             }
         }
 
         const session = getSession();
+        const siteId = new URLSearchParams(window.location.search).get('site');
+
         if (!session) {
+            window.location.href = '/dashboard.html';
+        }
+        if (!siteId) {
+            console.warn('No siteId in URL');
             window.location.href = '/dashboard.html';
         }
 
@@ -372,7 +377,7 @@
         const siteId = params.get('site');
 
         const initialState = {
-            siteId: siteId || null,
+            siteId: siteId || null,  // ← use the global siteId
             siteName: 'Untitled Site',
             logoUrl: '',
             bgColor: '#f8fafc',
@@ -511,6 +516,8 @@
                 newState.__lastAction = action.type;
             }
             if (action.type !== 'LOAD' && action.type !== 'RESET') {
+                // Always ensure siteId is set from URL
+                if (siteId) newState.siteId = siteId;
                 saveSite(newState);
             }
             return newState;
@@ -521,18 +528,16 @@
         // ================================================================
         async function saveSite(state) {
             try {
-                const sessionData = JSON.parse(localStorage.getItem('podiumSession') || 'null');
-                if (!sessionData?.access_token) {
-                    console.warn('No session — skipping save');
-                    return;
-                }
-
-                const siteId = state.siteId;
                 if (!siteId) {
-                    console.warn('No siteId — skipping save');
+                    console.warn('⚠️ No siteId available');
+                    return;
+                }
+                if (!session?.access_token) {
+                    console.warn('⚠️ No session available');
                     return;
                 }
 
+                // Merge siteId from URL into payload
                 const payload = {
                     name: state.siteName,
                     data: {
@@ -552,7 +557,7 @@
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + sessionData.access_token,
+                        'Authorization': 'Bearer ' + session.access_token,
                     },
                     body: JSON.stringify(payload),
                 });
