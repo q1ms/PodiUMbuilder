@@ -464,18 +464,26 @@
                 const siteId = params.get('site');
                 if (!siteId) { setError('No site ID provided.'); setLoading(false); return; }
 
-                fetch(`/api/sites/${siteId}`)
+                console.log('🌍 Public viewer loading site:', siteId);
+
+                fetch(`/api/public/site/${siteId}?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => {
-                        if (!r.ok) throw new Error('Site not found');
+                        console.log('📥 Response status:', r.status);
+                        if (!r.ok) throw new Error(r.status === 404 ? 'Site not found' : 'Failed to load');
                         return r.json();
                     })
                     .then(site => {
-                        // Merge top-level name with nested data
+                        console.log('✅ Site loaded:', site.name);
                         setSite({ ...site.data, name: site.name });
                         setActiveTab(site.data?.activeTab || 'main');
+                        document.title = site.name || 'Presenter';
                         setLoading(false);
                     })
-                    .catch(e => { setError(e.message); setLoading(false); });
+                    .catch(e => {
+                        console.error('❌ Load error:', e);
+                        setError(e.message);
+                        setLoading(false);
+                    });
             }, []);
 
             // Auto-refresh every 5 seconds for live updates
