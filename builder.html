@@ -1430,39 +1430,7 @@
         // PUBLISH
         // ================================================================
         async function publishLayout(state, notify) {
-            try {
-                const siteData = {
-                    id: state.siteId,
-                    name: state.siteName,
-                    components: state.components,
-                    tabs: state.tabs,
-                    activeTab: state.activeTab,
-                    logoUrl: state.logoUrl,
-                    bgColor: state.bgColor,
-                    topBarColor: state.topBarColor,
-                    media: state.media,
-                    updatedAt: new Date().toISOString(),
-                };
-
-                const resp = await fetch('/api/save-site', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + (session?.access_token || ''),
-                    },
-                    body: JSON.stringify({ siteId: state.siteId, siteData }),
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error);
-
-                // Stable share URL — same URL every time
-                const baseUrl = window.location.href.split('?')[0].replace('builder.html', '');
-                const shareUrl = `${baseUrl}viewer.html?site=${state.siteId}`;
-
-                showPublishModal(shareUrl, notify);
-            } catch (e) {
-                notify('❌ Save failed: ' + e.message, 'danger');
-            }
+            await saveSite(state);
         }
 
         // ===== Modal helper =====
