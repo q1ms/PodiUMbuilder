@@ -338,6 +338,45 @@ app.get('/health', (req, res) => {
 });
 
 // ================================================================
+// PUBLIC SITE VIEW (no auth — used by viewer.html)
+// ================================================================
+app.get('/api/public/site/:id', async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        console.log('🌍 Public site request:', id);
+
+        // Validate UUID
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(id)) {
+            console.error('❌ Invalid UUID format:', id);
+            return res.status(400).json({ error: 'Invalid site ID' });
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('sites')
+            .select('id, name, data')
+            .eq('id', id)
+            .maybeSingle();
+
+        console.log('📥 Query result:', { found: !!data, error: error?.message });
+
+        if (error) {
+            console.error('❌ Supabase error:', error);
+            return res.status(500).json({ error: error.message });
+        }
+        if (!data) {
+            return res.status(404).json({ error: 'Site not found' });
+        }
+
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(data);
+    } catch (err) {
+        console.error('❌ Public site exception:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================================
 // STATIC FILES
 // ================================================================
 app.get('/', (req, res) => {
