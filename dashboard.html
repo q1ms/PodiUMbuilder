@@ -426,10 +426,50 @@
         // ================================================================
         async function loadSites() {
             try {
-                sites = await apiFetch('/api/sites');
+                console.log('🔄 Loading sites...');
+                const resp = await fetch('/api/sites', {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (session?.access_token || ''),
+                    },
+                });
+                console.log('📥 Response status:', resp.status);
+
+                const contentType = resp.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    const text = await resp.text();
+                    console.error('❌ Non-JSON response:', text.substring(0, 200));
+                    sites = [];
+                    renderSites();
+                    return;
+                }
+
+                const data = await resp.json();
+                console.log('📥 Response body:', data);
+
+                if (resp.status === 401) {
+                    console.warn('⚠️ Session expired');
+                    localStorage.removeItem('podiumSession');
+                    localStorage.removeItem('podiumUser');
+                    session = null; user = null;
+                    showAuth();
+                    return;
+                }
+
+                if (!resp.ok) {
+                    console.error('❌ Load error:', data);
+                    sites = [];
+                    renderSites();
+                    return;
+                }
+
+                sites = Array.isArray(data) ? data : [];
+                console.log('✅ Loaded', sites.length, 'sites');
                 renderSites();
             } catch (e) {
-                console.error('Load sites failed:', e);
+                console.error('❌ Load sites failed:', e);
+                sites = [];
+                renderSites();
             }
         }
 
@@ -535,13 +575,46 @@
         // ================================================================
         async function createNewSite() {
             try {
-                const site = await apiFetch('/api/sites', {
+                console.log('🔄 Creating new site...');
+                const resp = await fetch('/api/sites', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (session?.access_token || ''),
+                    },
                     body: JSON.stringify({ name: 'Untitled Site' }),
                 });
-                window.location.href = `builder.html?site=${site.id}`;
+                console.log('📥 Response status:', resp.status);
+
+                const contentType = resp.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    const text = await resp.text();
+                    console.error('❌ Non-JSON response:', text.substring(0, 200));
+                    alert('Server error. Check console for details.');
+                    return;
+                }
+
+                const data = await resp.json();
+                console.log('📥 Response body:', data);
+
+                if (resp.status === 401) {
+                    alert('Session expired. Please log in again.');
+                    localStorage.removeItem('podiumSession');
+                    localStorage.removeItem('podiumUser');
+                    window.location.reload();
+                    return;
+                }
+
+                if (!resp.ok) {
+                    alert('Failed to create site: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                console.log('✅ Site created:', data.id);
+                window.location.href = `builder.html?site=${data.id}`;
             } catch (e) {
-                alert('Failed to create site: ' + e.message);
+                console.error('❌ Create site failed:', e);
+                alert('Network error: ' + e.message);
             }
         }
 
