@@ -553,19 +553,29 @@
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + session.access_token,
+                        'Authorization': 'Bearer ' + (session?.access_token || ''),
                     },
                     body: JSON.stringify(payload),
                 });
 
-                console.log('📥 Save status:', resp.status);
+                console.log('📥 Save status:', resp.status, 'Content-Type:', resp.headers.get('content-type'));
 
-                if (!resp.ok) {
-                    const errBody = await resp.json().catch(() => ({}));
-                    console.error('❌ Save failed:', errBody);
+                // Detect HTML responses (server error pages, 404, etc.)
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    const text = await resp.text();
+                    console.error('❌ Server returned non-JSON:', text.substring(0, 300));
+                    console.error('❌ Likely cause: route /api/sites/:id PUT is missing from server.js');
                     return;
                 }
-                console.log('✅ Saved');
+
+                const responseBody = await resp.json();
+
+                if (!resp.ok) {
+                    console.error('❌ Save failed:', responseBody);
+                    return;
+                }
+                console.log('✅ Saved successfully');
             } catch (e) {
                 console.error('❌ Save exception:', e);
             }

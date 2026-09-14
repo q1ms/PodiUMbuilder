@@ -251,6 +251,8 @@ app.put('/api/sites/:id', authenticate, async (req, res, next) => {
         const { id } = req.params;
         const { name, data } = req.body;
 
+        console.log('📝 PUT /api/sites/' + id, 'user:', req.user.id);
+
         const update = {};
         if (name !== undefined) update.name = name;
         if (data !== undefined) update.data = data;
@@ -263,9 +265,19 @@ app.put('/api/sites/:id', authenticate, async (req, res, next) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase update error:', error);
+            return res.status(500).json({ error: error.message });
+        }
+        if (!site) {
+            return res.status(404).json({ error: 'Site not found' });
+        }
+
         res.json(site);
-    } catch (err) { next(err); }
+    } catch (err) {
+        console.error('PUT site exception:', err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Delete site
