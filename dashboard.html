@@ -4,108 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard — Podi@UM</title>
-    <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="/styles.css" />
     <style>
         body { background: var(--color-bg-subtle); }
         .topbar {
             background: #fff;
             border-bottom: 1px solid var(--color-gray-lighter);
-            padding: var(--space-4) 0;
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            padding: 16px 0;
+            position: sticky; top: 0; z-index: 100;
         }
         .logo-mark {
             width: 36px; height: 36px;
             background: linear-gradient(135deg, var(--color-brand), var(--color-navy));
-            border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-weight: 800;
-            font-size: 18px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 800; font-size: 18px;
         }
         .hero {
             background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
-            border-radius: var(--radius-xl);
-            padding: var(--space-12) var(--space-10);
+            border-radius: 24px;
+            padding: 48px 40px;
             color: #fff;
-            margin: var(--space-8) 0;
+            margin: 32px 0;
             position: relative;
             overflow: hidden;
         }
         .hero::before {
-            content: '';
-            position: absolute;
-            top: -50%; right: -10%;
+            content: ''; position: absolute; top: -50%; right: -10%;
             width: 400px; height: 400px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 50%;
-        }
-        .hero::after {
-            content: '';
-            position: absolute;
-            bottom: -30%; left: 30%;
-            width: 300px; height: 300px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 50%;
+            background: rgba(255,255,255,0.1); border-radius: 50%;
         }
         .hero > * { position: relative; z-index: 1; }
-        .hero h1 { font-size: var(--text-display); color: #fff; margin-bottom: var(--space-3); }
-        .hero p { color: rgba(255,255,255,0.85); font-size: var(--text-h4); font-weight: 400; max-width: 500px; }
-
-        .toolbar {
-            display: flex;
-            gap: var(--space-4);
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: var(--space-6);
-            flex-wrap: wrap;
-        }
-        .search-box {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            background: #fff;
-            border: 1px solid var(--color-gray-lighter);
-            border-radius: var(--radius-md);
-            padding: 0 var(--space-4);
-            height: 40px;
-            flex: 1;
-            min-width: 240px;
-            max-width: 400px;
-            transition: all var(--transition-fast);
-        }
-        .search-box:focus-within {
-            border-color: var(--color-brand);
-            box-shadow: 0 0 0 3px var(--color-brand-tint);
-        }
-        .search-box i { color: var(--color-gray-light); font-size: 14px; }
-        .search-box input {
-            border: none;
-            outline: none;
-            flex: 1;
-            font-family: var(--font-family);
-            font-size: var(--text-sm);
-            color: var(--color-navy);
-            background: transparent;
-        }
+        .hero h1 { font-size: 40px; color: #fff; margin-bottom: 12px; font-weight: 800; letter-spacing: -0.02em; }
+        .hero p { color: rgba(255,255,255,0.9); font-size: 17px; max-width: 500px; }
 
         .project-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: var(--space-6);
-            padding-bottom: var(--space-12);
+            gap: 24px;
+            padding-bottom: 48px;
         }
         .project-card {
             background: #fff;
             border: 1px solid var(--color-gray-lighter);
-            border-radius: var(--radius-lg);
+            border-radius: 16px;
             overflow: hidden;
             cursor: pointer;
-            transition: all var(--transition-base);
+            transition: all 250ms;
         }
         .project-card:hover {
             border-color: var(--color-brand);
@@ -114,86 +60,130 @@
         }
         .project-preview {
             height: 140px;
-            background: linear-gradient(135deg, var(--color-bg-tint) 0%, var(--color-brand-tint) 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background: linear-gradient(135deg, #F1F5F9 0%, #E6F7FA 100%);
+            display: flex; align-items: center; justify-content: center;
             position: relative;
-            font-size: 40px;
             color: var(--color-brand);
         }
-        .project-body { padding: var(--space-5); }
+        .project-body { padding: 20px; }
         .project-title {
-            font-size: var(--text-h4);
-            font-weight: 600;
-            color: var(--color-navy);
-            margin-bottom: var(--space-2);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: 17px; font-weight: 600; color: var(--color-navy);
+            margin-bottom: 6px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .project-meta {
-            font-size: var(--text-xs);
-            color: var(--color-gray-light);
-            display: flex;
-            align-items: center;
-            gap: var(--space-2);
-            margin-bottom: var(--space-4);
+            font-size: 12px; color: var(--color-gray-light);
+            display: flex; align-items: center; gap: 6px;
+            margin-bottom: 14px;
         }
         .project-actions {
-            display: flex;
-            gap: var(--space-2);
-            justify-content: flex-end;
+            display: flex; gap: 6px; justify-content: flex-end;
         }
-
         .empty-state {
             grid-column: 1 / -1;
             text-align: center;
-            padding: var(--space-16) var(--space-6);
+            padding: 64px 24px;
             color: var(--color-gray);
         }
-        .empty-state i { font-size: 48px; color: var(--color-gray-lighter); margin-bottom: var(--space-4); display: block; }
+        .empty-state i { font-size: 48px; color: var(--color-gray-lighter); margin-bottom: 16px; display: block; }
 
         /* Login page */
         .login-wrapper {
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: var(--space-6);
-            background: linear-gradient(135deg, var(--color-bg-subtle) 0%, var(--color-brand-tint) 100%);
+            display: flex; align-items: center; justify-content: center;
+            padding: 24px;
+            background: linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%);
         }
         .login-card {
             background: #fff;
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-xl);
-            padding: var(--space-10);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(17, 35, 59, 0.12);
+            padding: 40px;
             max-width: 420px;
             width: 100%;
+        }
+        .auth-tabs {
+            display: flex;
+            gap: 4px;
+            background: #F1F5F9;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 24px;
+        }
+        .auth-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            color: var(--color-gray);
+            transition: all 150ms;
+            border: none;
+            background: transparent;
+        }
+        .auth-tab.active {
+            background: #fff;
+            color: var(--color-navy);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .error-msg {
+            color: #EF4444;
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+            padding: 10px 14px;
+            background: #FEE2E2;
+            border-radius: 8px;
+        }
+        .success-msg {
+            color: #166534;
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+            padding: 10px 14px;
+            background: #DCFCE7;
+            border-radius: 8px;
         }
     </style>
 </head>
 <body>
 
-    <!-- ===== LOGIN ===== -->
-    <div id="loginOverlay" class="login-wrapper">
-        <div class="login-card animate-slide">
-            <div class="logo-mark" style="width:48px;height:48px;font-size:24px;margin-bottom:var(--space-6);">P</div>
-            <h1 class="t-h2" style="margin-bottom:var(--space-2);">Welcome back</h1>
-            <p class="t-body" style="margin-bottom:var(--space-8);">Sign in to manage your event sites.</p>
-            
-            <label class="label">Email</label>
-            <input type="email" id="emailInput" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:var(--space-4);" />
-            
-            <label class="label">Password</label>
-            <input type="password" id="passwordInput" class="input input-lg" placeholder="Enter your password" style="margin-bottom:var(--space-4);" />
-            
-            <button class="btn btn-primary btn-lg btn-full" id="loginBtn">Sign In</button>
-            <div class="login-error" id="loginError" style="color:var(--color-danger);font-size:var(--text-sm);margin-top:var(--space-3);display:none;"></div>
-            
-            <p class="t-sm" style="text-align:center;margin-top:var(--space-6);">
-                Don't have an account? <a href="#" id="signupLink" style="color:var(--color-brand);font-weight:600;">Sign up</a>
-            </p>
+    <!-- ===== AUTH SCREEN ===== -->
+    <div id="authScreen" class="login-wrapper">
+        <div class="login-card">
+            <div class="logo-mark" style="width:48px;height:48px;font-size:24px;margin-bottom:24px;">P</div>
+            <h1 class="t-h2" style="margin-bottom:8px;">Welcome to Podi@UM</h1>
+            <p class="t-body" style="margin-bottom:24px;">Event presentation system for Universiti Malaya.</p>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tabLogin">Sign In</button>
+                <button class="auth-tab" id="tabSignup">Sign Up</button>
+            </div>
+
+            <!-- LOGIN FORM -->
+            <div id="loginForm">
+                <label class="label">Email</label>
+                <input type="email" id="loginEmail" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:16px;" />
+                <label class="label">Password</label>
+                <input type="password" id="loginPassword" class="input input-lg" placeholder="Your password" style="margin-bottom:20px;" />
+                <button class="btn btn-primary btn-lg btn-full" id="loginBtn">Sign In</button>
+                <div class="error-msg" id="loginError"></div>
+            </div>
+
+            <!-- SIGNUP FORM -->
+            <div id="signupForm" style="display:none;">
+                <label class="label">Email</label>
+                <input type="email" id="signupEmail" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:16px;" />
+                <label class="label">Password</label>
+                <input type="password" id="signupPassword" class="input input-lg" placeholder="At least 8 characters" style="margin-bottom:16px;" />
+                <label class="label">Confirm Password</label>
+                <input type="password" id="signupConfirm" class="input input-lg" placeholder="Repeat password" style="margin-bottom:20px;" />
+                <button class="btn btn-primary btn-lg btn-full" id="signupBtn">Create Account</button>
+                <div class="error-msg" id="signupError"></div>
+                <div class="success-msg" id="signupSuccess"></div>
+            </div>
         </div>
     </div>
 
@@ -201,16 +191,14 @@
     <div id="dashboardContent" style="display:none;">
         <div class="topbar">
             <div class="container" style="display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:var(--space-3);">
+                <div style="display:flex;align-items:center;gap:12px;">
                     <div class="logo-mark">P</div>
                     <div>
-                        <div style="font-weight:700;color:var(--color-navy);font-size:var(--text-h4);">Podi@UM</div>
-                        <div style="font-size:var(--text-xs);color:var(--color-gray-light);">Event Presentation System</div>
+                        <div style="font-weight:700;color:var(--color-navy);font-size:17px;">Podi@UM</div>
+                        <div style="font-size:12px;color:var(--color-gray-light);" id="userEmail">—</div>
                     </div>
                 </div>
-                <div style="display:flex;gap:var(--space-3);">
-                    <button class="btn btn-secondary" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
-                </div>
+                <button class="btn btn-secondary" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
             </div>
         </div>
 
@@ -218,15 +206,15 @@
             <div class="hero">
                 <h1>Your Event Sites</h1>
                 <p>Design, build, and publish branded presentations for any event.</p>
-                <button class="btn btn-lg" id="heroCreateBtn" style="background:#fff;color:var(--color-brand);margin-top:var(--space-6);">
+                <button class="btn btn-lg" id="heroCreateBtn" style="background:#fff;color:var(--color-brand);margin-top:24px;">
                     <i class="fas fa-plus"></i> Create New Site
                 </button>
             </div>
 
-            <div class="toolbar">
-                <div class="search-box">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="searchInput" placeholder="Search your sites…" />
+            <div style="display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--color-gray-lighter);border-radius:10px;padding:0 16px;height:40px;flex:1;min-width:240px;max-width:400px;">
+                    <i class="fas fa-search" style="color:var(--color-gray-light);"></i>
+                    <input type="text" id="searchInput" placeholder="Search your sites…" style="border:none;outline:none;flex:1;font-family:inherit;font-size:14px;background:transparent;" />
                 </div>
                 <button class="btn btn-primary" id="createSiteBtn"><i class="fas fa-plus"></i> New Site</button>
             </div>
@@ -237,31 +225,31 @@
 
     <script>
         // ================================================================
-        // CONFIG
-        // ================================================================
-        const SUPABASE_URL = '';  // not needed on frontend since we proxy via server
-        const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
-        const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
-
-        // ================================================================
-        // AUTH STATE
+        // STATE
         // ================================================================
         let session = null;
         let user = null;
+        let sites = [];
 
-        // Load session from localStorage
         try {
-            const saved = localStorage.getItem('podiumSession');
-            if (saved) session = JSON.parse(saved);
-            const savedUser = localStorage.getItem('podiumUser');
-            if (savedUser) user = JSON.parse(savedUser);
+            const s = localStorage.getItem('podiumSession');
+            if (s) session = JSON.parse(s);
+            const u = localStorage.getItem('podiumUser');
+            if (u) user = JSON.parse(u);
         } catch (e) {}
 
-        const loginOverlay = document.getElementById('loginOverlay');
+        const authScreen = document.getElementById('authScreen');
         const dashboardContent = document.getElementById('dashboardContent');
 
-        function showLogin() { loginOverlay.style.display = 'flex'; dashboardContent.style.display = 'none'; }
-        function showDashboard() { loginOverlay.style.display = 'none'; dashboardContent.style.display = 'block'; }
+        function showAuth() {
+            authScreen.style.display = 'flex';
+            dashboardContent.style.display = 'none';
+        }
+        function showDashboard() {
+            authScreen.style.display = 'none';
+            dashboardContent.style.display = 'block';
+            if (user?.email) document.getElementById('userEmail').textContent = user.email;
+        }
 
         // ================================================================
         // API HELPER
@@ -269,51 +257,184 @@
         async function apiFetch(endpoint, options = {}) {
             const headers = { 'Content-Type': 'application/json', ...options.headers };
             if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+
             const resp = await fetch(endpoint, { ...options, headers });
+
+            // Check content type before parsing
+            const contentType = resp.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('Server returned non-JSON response. Status: ' + resp.status);
+            }
+
+            const data = await resp.json();
 
             if (resp.status === 401) {
                 localStorage.removeItem('podiumSession');
                 localStorage.removeItem('podiumUser');
                 session = null; user = null;
-                showLogin();
+                showAuth();
                 throw new Error('Session expired. Please log in again.');
             }
-            const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'API error');
             return data;
         }
 
         // ================================================================
-        // LOGIN / SIGNUP
+        // TAB SWITCHING
         // ================================================================
-        async function doLogin(email, password) {
-            const resp = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Login failed');
+        const tabLogin = document.getElementById('tabLogin');
+        const tabSignup = document.getElementById('tabSignup');
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
 
-            session = data.session;
-            user = data.user;
-            localStorage.setItem('podiumSession', JSON.stringify(session));
-            localStorage.setItem('podiumUser', JSON.stringify(user));
+        tabLogin.addEventListener('click', () => {
+            tabLogin.classList.add('active');
+            tabSignup.classList.remove('active');
+            loginForm.style.display = 'block';
+            signupForm.style.display = 'none';
+        });
+        tabSignup.addEventListener('click', () => {
+            tabSignup.classList.add('active');
+            tabLogin.classList.remove('active');
+            signupForm.style.display = 'block';
+            loginForm.style.display = 'none';
+        });
 
-            showDashboard();
-            await loadSites();
-        }
+        // ================================================================
+        // LOGIN
+        // ================================================================
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errEl = document.getElementById('loginError');
+            errEl.style.display = 'none';
+
+            if (!email || !password) {
+                errEl.textContent = 'Please enter email and password';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    errEl.textContent = data.error || 'Login failed';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                session = data.session;
+                user = data.user;
+                localStorage.setItem('podiumSession', JSON.stringify(session));
+                localStorage.setItem('podiumUser', JSON.stringify(user));
+
+                showDashboard();
+                await loadSites();
+            } catch (e) {
+                errEl.textContent = 'Network error: ' + e.message;
+                errEl.style.display = 'block';
+            }
+        });
+
+        document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('loginBtn').click();
+        });
+
+        // ================================================================
+        // SIGNUP
+        // ================================================================
+        document.getElementById('signupBtn').addEventListener('click', async () => {
+            const email = document.getElementById('signupEmail').value.trim();
+            const password = document.getElementById('signupPassword').value;
+            const confirm = document.getElementById('signupConfirm').value;
+            const errEl = document.getElementById('signupError');
+            const sucEl = document.getElementById('signupSuccess');
+            errEl.style.display = 'none';
+            sucEl.style.display = 'none';
+
+            if (!email || !password) {
+                errEl.textContent = 'Email and password are required';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password.length < 8) {
+                errEl.textContent = 'Password must be at least 8 characters';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password !== confirm) {
+                errEl.textContent = 'Passwords do not match';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    errEl.textContent = data.error || 'Signup failed';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                // If email confirmation is disabled, session exists — log them in
+                if (data.session) {
+                    session = data.session;
+                    user = data.user;
+                    localStorage.setItem('podiumSession', JSON.stringify(session));
+                    localStorage.setItem('podiumUser', JSON.stringify(user));
+                    sucEl.textContent = '✅ Account created! Logging you in…';
+                    sucEl.style.display = 'block';
+                    setTimeout(() => { showDashboard(); loadSites(); }, 800);
+                } else {
+                    sucEl.textContent = '✅ Account created! Check your email to confirm, then log in.';
+                    sucEl.style.display = 'block';
+                    setTimeout(() => {
+                        tabLogin.click();
+                        document.getElementById('loginEmail').value = email;
+                    }, 2000);
+                }
+            } catch (e) {
+                errEl.textContent = 'Network error: ' + e.message;
+                errEl.style.display = 'block';
+            }
+        });
+
+        document.getElementById('signupConfirm').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('signupBtn').click();
+        });
+
+        // ================================================================
+        // LOGOUT
+        // ================================================================
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('podiumSession');
+            localStorage.removeItem('podiumUser');
+            session = null; user = null;
+            location.reload();
+        });
 
         // ================================================================
         // SITES
         // ================================================================
-        let sites = [];
-
         async function loadSites() {
             try {
                 sites = await apiFetch('/api/sites');
                 renderSites();
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error('Load sites failed:', e);
+            }
         }
 
         function renderSites(search = '') {
@@ -329,32 +450,33 @@
                 grid.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-folder-open"></i>
-                        <h3 class="t-h4" style="margin-bottom:var(--space-2);">No sites yet</h3>
-                        <p class="t-body">Click <strong>Create New Site</strong> to get started.</p>
+                        <h3 style="font-size:18px;font-weight:600;margin-bottom:8px;color:#11233B;">No sites yet</h3>
+                        <p>Click <strong>Create New Site</strong> to get started.</p>
                     </div>`;
                 return;
             }
 
             grid.innerHTML = filtered.map(site => `
-                <div class="project-card animate-slide" data-id="${site.id}">
+                <div class="project-card" data-id="${site.id}">
                     <div class="project-preview" data-preview-id="${site.id}">
-                        <i class="fas fa-file-alt"></i>
+                        <i class="fas fa-file-alt" style="font-size:40px;"></i>
                     </div>
                     <div class="project-body">
                         <div class="project-title">${site.name}</div>
-                        <div class="project-meta"><i class="fas fa-clock"></i> Updated ${new Date(site.updated_at).toLocaleDateString()}</div>
-                        <div class="project-actions">
-                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}"><i class="fas fa-external-link-alt"></i> Launch</button>
-                            <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i></button>
-                            <button class="btn btn-sm btn-ghost delete-btn" style="color:var(--color-danger);"><i class="fas fa-trash"></i></button>
+                        <div class="project-meta">
+                            <i class="fas fa-clock"></i>
+                            Updated ${new Date(site.updated_at).toLocaleDateString()}
                         </div>
-                    </div>
-                </div>
-            `).join('');
+                        <div class="project-actions">
+                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}">
                                 <i class="fas fa-external-link-alt"></i> Launch
                             </button>
-                            <button class="btn btn-sm btn-ghost edit-btn"><i class="fas fa-pen"></i> Edit</button>
-                            <button class="btn btn-sm btn-ghost delete-btn" style="color:var(--color-danger);"><i class="fas fa-trash"></i></button>
+                            <button class="btn btn-sm btn-ghost edit-btn">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button class="btn btn-sm btn-ghost delete-btn" style="color:#EF4444;">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -362,8 +484,13 @@
 
             grid.querySelectorAll('.project-card').forEach(card => {
                 const id = card.dataset.id;
-                card.addEventListener('click', (e) => { if (!e.target.closest('button')) openSite(id); });
-                card.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openSite(id); });
+                card.addEventListener('click', (e) => {
+                    if (!e.target.closest('button')) window.location.href = `builder.html?site=${id}`;
+                });
+                card.querySelector('.edit-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.location.href = `builder.html?site=${id}`;
+                });
                 card.querySelector('.launch-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     window.open(`viewer.html?site=${id}`, '_blank');
@@ -371,8 +498,12 @@
                 card.querySelector('.delete-btn').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     if (!confirm('Delete this site?')) return;
-                    await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
-                    await loadSites();
+                    try {
+                        await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
+                        await loadSites();
+                    } catch (err) {
+                        alert('Delete failed: ' + err.message);
+                    }
                 });
                 renderThumbnail(id);
             });
@@ -403,8 +534,9 @@
             } catch (e) {}
         }
 
-        function openSite(id) { window.location.href = `builder.html?site=${id}`; }
-
+        // ================================================================
+        // CREATE SITE
+        // ================================================================
         async function createNewSite() {
             try {
                 const site = await apiFetch('/api/sites', {
@@ -417,77 +549,24 @@
             }
         }
 
-        // ================================================================
-        // EVENT BINDING
-        // ================================================================
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            const email = document.getElementById('emailInput').value.trim();
-            const password = document.getElementById('passwordInput').value;
-            if (!email || !password) {
-                document.getElementById('loginError').textContent = 'Please enter email and password';
-                document.getElementById('loginError').style.display = 'block';
-                return;
-            }
-            try {
-                await doLogin(email, password);
-            } catch (e) {
-                document.getElementById('loginError').textContent = e.message;
-                document.getElementById('loginError').style.display = 'block';
-            }
-        });
-
-        document.getElementById('passwordInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('loginBtn').click();
-        });
-
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('podiumSession');
-            localStorage.removeItem('podiumUser');
-            session = null; user = null;
-            location.reload();
-        });
-
         document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
         document.getElementById('heroCreateBtn').addEventListener('click', createNewSite);
         document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
 
-        document.getElementById('signupLink')?.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const email = prompt('Enter your email:');
-            if (!email) return;
-            const password = prompt('Enter a password (min 8 characters):');
-            if (!password || password.length < 8) return alert('Password must be at least 8 characters');
-            
-            try {
-                const resp = await fetch('/api/signup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error);
-                alert('Account created! You can now log in.');
-            } catch (e) {
-                alert('Sign-up failed: ' + e.message);
-            }
-        });
-
         // ================================================================
         // BOOT
         // ================================================================
-        showLogin();
+        showAuth();
         if (session?.access_token) {
-            fetch('/api/verify', { headers: { 'Authorization': 'Bearer ' + session.access_token } })
-                .then(r => {
-                    if (r.ok) { showDashboard(); loadSites(); }
-                    else { localStorage.removeItem('podiumSession'); localStorage.removeItem('podiumUser'); session = null; showLogin(); }
-                })
-                .catch(() => { showLogin(); });
+            apiFetch('/api/verify')
+                .then(() => { showDashboard(); loadSites(); })
+                .catch(() => {
+                    localStorage.removeItem('podiumSession');
+                    localStorage.removeItem('podiumUser');
+                    session = null; user = null;
+                    showAuth();
+                });
         }
     </script>
-    <div style="text-align:center;padding:24px;color:#94a3b8;font-size:13px;">
-        <a href="/terms.html" style="color:#94a3b8;margin-right:16px;">Terms</a>
-        <a href="/privacy.html" style="color:#94a3b8;">Privacy</a>
-    </div>
 </body>
 </html>
