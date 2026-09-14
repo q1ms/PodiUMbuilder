@@ -113,7 +113,41 @@ app.post('/api/signup', loginLimiter, async (req, res, next) => {
         if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
         if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        // Check if user already exists
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existing = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+
+        if (existing) {
+            if (existing.email_confirmed_at) {
+                return res.status(400).json({
+                    error: 'This email is already registered. Please log in instead.'
+                });
+            } else {
+                // Existing but unconfirmed — resend confirmation
+                const { error: resendError } = await supabase.auth.resend({
+                    type: 'signup',
+                    email,
+                    options: {
+                        emailRedirectTo: `${req.protocol}://${req.get('host')}/auth-callback.html`,
+                    },
+                });
+                if (resendError) return res.status(400).json({ error: resendError.message });
+                return res.json({
+                    success: true,
+                    message: 'Confirmation email re-sent. Please check your inbox.',
+                    session: null,
+                });
+            }
+        }
+
+        // New user — sign up with proper redirect
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                emailRedirectTo: `${req.protocol}://${req.get('host')}/auth-callback.html`,
+            },
+        });
         if (error) return res.status(400).json({ error: error.message });
 
         logger.info(`New user signed up: ${email}`);

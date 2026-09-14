@@ -388,7 +388,7 @@
                     return;
                 }
 
-                // If email confirmation is disabled, session exists — log them in
+                // If a session came back, user is logged in immediately
                 if (data.session) {
                     session = data.session;
                     user = data.user;
@@ -398,12 +398,8 @@
                     sucEl.style.display = 'block';
                     setTimeout(() => { showDashboard(); loadSites(); }, 800);
                 } else {
-                    sucEl.textContent = '✅ Account created! Check your email to confirm, then log in.';
+                    sucEl.textContent = data.message || '✅ Check your email to confirm your account.';
                     sucEl.style.display = 'block';
-                    setTimeout(() => {
-                        tabLogin.click();
-                        document.getElementById('loginEmail').value = email;
-                    }, 2000);
                 }
             } catch (e) {
                 errEl.textContent = 'Network error: ' + e.message;

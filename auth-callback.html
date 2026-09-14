@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verifying…</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%);
+            padding: 24px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(17, 35, 59, 0.12);
+            padding: 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+        }
+        .spinner-lg {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid #E5E7EB;
+            border-top-color: #0090A8;
+            border-radius: 50%;
+            animation: spin 700ms linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div id="loading">
+            <div class="spinner-lg"></div>
+            <h2 style="font-weight:700;color:#11233B;margin-bottom:8px;">Verifying your account…</h2>
+            <p style="color:#6B7280;font-size:14px;">Please wait while we confirm your email.</p>
+        </div>
+        <div id="success" style="display:none;">
+            <div class="status-icon">✅</div>
+            <h2 style="font-weight:700;color:#11233B;margin-bottom:8px;">Email Confirmed!</h2>
+            <p style="color:#6B7280;font-size:14px;margin-bottom:20px;">Your account is ready. Redirecting to dashboard…</p>
+        </div>
+        <div id="error" style="display:none;">
+            <div class="status-icon">❌</div>
+            <h2 style="font-weight:700;color:#11233B;margin-bottom:8px;">Confirmation Failed</h2>
+            <p id="errorMsg" style="color:#6B7280;font-size:14px;margin-bottom:20px;">Something went wrong.</p>
+            <a href="/" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        // Parse the hash fragment that Supabase sends:
+        // #access_token=...&refresh_token=...&type=signup
+        (async function() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+            const errorCode = params.get('error');
+            const errorDesc = params.get('error_description');
+
+            if (errorCode || errorDesc) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('errorMsg').textContent = errorDesc || errorCode;
+                return;
+            }
+
+            if (!accessToken || !refreshToken) {
+                // No tokens — maybe user opened the page directly
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('errorMsg').textContent = 'No confirmation token found. Please use the link from your email.';
+                return;
+            }
+
+            // Save the session to localStorage (same format as the dashboard expects)
+            const session = {
+                access_token: accessToken,
+                refresh_token: refreshToken,
+                expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour
+            };
+            localStorage.setItem('podiumSession', JSON.stringify(session));
+
+            // Fetch user info to also store it
+            try {
+                const resp = await fetch('/api/verify', {
+                    headers: { 'Authorization': 'Bearer ' + accessToken },
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.user) {
+                        localStorage.setItem('podiumUser', JSON.stringify(data.user));
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not fetch user:', e);
+            }
+
+            // Show success, then redirect
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('success').style.display = 'block';
+
+            // Clean the URL (remove the hash) and redirect
+            setTimeout(() => {
+                window.location.href = '/?confirmed=1';
+            }, 1500);
+        })();
+    </script>
+</body>
+</html>
