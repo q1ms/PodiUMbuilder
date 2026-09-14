@@ -372,10 +372,6 @@
             Divider: { label: 'Divider', color: '#d1d5db' },
         };
 
-        // Load site from server
-        const params = new URLSearchParams(window.location.search);
-        const siteId = params.get('site');
-
         const initialState = {
             siteId: siteId || null,  // ← use the global siteId
             siteName: 'Untitled Site',
