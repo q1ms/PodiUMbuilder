@@ -34,6 +34,7 @@
             const [progress, setProgress] = useState(0);
             const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(1.0);
+            const [endedCounter, setEndedCounter] = useState(0);
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
 
@@ -44,7 +45,11 @@
                 audioRef.current = audio;
                 const onTime = () => { if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100); };
                 const onMeta = () => setDuration(audio.duration);
-                const onEnd = () => { setIsPlaying(false); setProgress(0); };
+                const onEnd = () => {
+                    setIsPlaying(false);
+                    setProgress(0);
+                    setEndedCounter(c => c + 1);  // ← signals a track naturally ended
+                };
                 audio.addEventListener('timeupdate', onTime);
                 audio.addEventListener('loadedmetadata', onMeta);
                 audio.addEventListener('ended', onEnd);
@@ -141,7 +146,7 @@
             };
 
             return (
-                <AudioContext.Provider value={{ audioUrl, isPlaying, progress, duration, volume, play, pause, togglePlay, seek, changeVolume, playBeep, stopAll }}>
+                <AudioContext.Provider value={{ audioUrl, isPlaying, progress, duration, volume, play, pause, togglePlay, seek, changeVolume, playBeep, stopAll, endedCounter }}>
                     {children}
                 </AudioContext.Provider>
             );
@@ -178,52 +183,58 @@
         const PlaylistBlock = ({ props, audioCtx }) => {
             const tracks = props.tracks || [];
             const [currentIdx, setCurrentIdx] = useState(null);
-            const [isPlaylistActive, setIsPlaylistActive] = useState(false); // track position even when paused
+            const [isPlaylistActive, setIsPlaylistActive] = useState(false);
             const [isPlaylistPlaying, setIsPlaylistPlaying] = useState(false);
 
-            // Auto-advance when track ends
+            // ============================================================
+            // AUTO-ADVANCE — only fires when a track naturally ENDS
+            // (uses endedCounter, not isPlaying, so pause doesn't trigger it)
+            // ============================================================
+            const lastHandledEndRef = useRef(0);
             useEffect(() => {
                 if (!isPlaylistPlaying || currentIdx === null) return;
-                if (audioCtx.audioUrl !== tracks[currentIdx]?.url) return;
-                if (audioCtx.isPlaying) return;
+                if (!audioCtx.endedCounter) return;
+                // Avoid double-firing on the same ended event
+                if (audioCtx.endedCounter === lastHandledEndRef.current) return;
+                lastHandledEndRef.current = audioCtx.endedCounter;
 
-                // Track just ended — advance
                 const nextIdx = currentIdx + 1;
                 if (nextIdx < tracks.length) {
                     setCurrentIdx(nextIdx);
                     audioCtx.play(tracks[nextIdx].url);
                 } else {
-                    // Reached end of playlist — reset position so next "Play" starts fresh
+                    // End of playlist — reset
                     setIsPlaylistPlaying(false);
                     setIsPlaylistActive(false);
                     setCurrentIdx(null);
                 }
-            }, [audioCtx.isPlaying, audioCtx.audioUrl, isPlaylistPlaying, currentIdx, tracks]);
+            }, [audioCtx.endedCounter, isPlaylistPlaying, currentIdx, tracks]);
 
-            // If user pauses/resumes via global stop button, sync state
+            // If user plays a different track externally, stop playlist mode
             useEffect(() => {
-                if (!isPlaylistPlaying) return;
-                if (audioCtx.audioUrl && currentIdx !== null && audioCtx.audioUrl !== tracks[currentIdx]?.url) {
-                    // Someone played a different track (e.g. Sound Button) — stop playlist mode
+                if (!isPlaylistActive) return;
+                if (currentIdx === null) return;
+                if (audioCtx.audioUrl && audioCtx.audioUrl !== tracks[currentIdx]?.url) {
                     setIsPlaylistPlaying(false);
+                    setIsPlaylistActive(false);
+                    setCurrentIdx(null);
                 }
             }, [audioCtx.audioUrl]);
 
             const handlePlayPause = () => {
                 if (tracks.length === 0) return;
 
-                // CASE 1: Currently playing → pause
+                // CASE 1: Playing → pause (keep currentIdx + currentTime)
                 if (isPlaylistPlaying && audioCtx.isPlaying) {
                     audioCtx.pause();
                     setIsPlaylistPlaying(false);
-                    // Keep currentIdx so we can resume
                     return;
                 }
 
-                // CASE 2: Paused mid-playlist → resume current track
-                if (isPlaylistActive && currentIdx !== null) {
+                // CASE 2: Paused mid-track → resume SAME track from SAME position
+                if (isPlaylistActive && currentIdx !== null && audioCtx.audioUrl === tracks[currentIdx]?.url) {
                     setIsPlaylistPlaying(true);
-                    audioCtx.play(tracks[currentIdx].url);
+                    audioCtx.play(tracks[currentIdx].url);  // audio context resumes from currentTime
                     return;
                 }
 
@@ -238,7 +249,7 @@
                 setIsPlaylistPlaying(false);
                 setIsPlaylistActive(false);
                 setCurrentIdx(null);
-                audioCtx.pause();
+                audioCtx.stopAll ? audioCtx.stopAll() : audioCtx.pause();
             };
 
             const playTrack = (idx) => {
@@ -248,7 +259,7 @@
                 audioCtx.play(tracks[idx].url);
             };
 
-            // Determine button label
+            // Button label logic
             let buttonLabel = 'Play Playlist';
             let buttonIcon = 'fa-play';
             let buttonColor = 'var(--color-navy)';
@@ -258,7 +269,7 @@
                 buttonIcon = 'fa-pause';
                 buttonColor = '#F59E0B';
             } else if (isPlaylistActive && currentIdx !== null) {
-                buttonLabel = 'Resume Playlist';
+                buttonLabel = `Resume · ${tracks[currentIdx]?.name || ''}`;
                 buttonIcon = 'fa-play';
                 buttonColor = 'var(--color-brand)';
             }
