@@ -137,7 +137,7 @@
             const [isPlaying, setIsPlaying] = useState(false);
             const [progress, setProgress] = useState(0);
             const [duration, setDuration] = useState(0);
-            const [volume, setVolume] = useState(0.8);
+            const [volume, setVolume] = useState(1.0);
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
 
@@ -617,16 +617,18 @@
             };
 
             const addTrack = () => {
-                const mediaItem = media.find(m => m.id === selectedMediaId);
-                if (newTrackName.trim() && mediaItem) {
-                    const newTracks = [...tracks, { name: newTrackName.trim(), url: mediaItem.url, mediaId: mediaItem.id }];
-                    updateProps({ tracks: newTracks });
-                    setNewTrackName('');
-                    setSelectedMediaId('');
-                    notify('Track added');
-                } else if (newTrackName.trim() && !mediaItem) {
+                const mediaItem = media?.find(m => m.id === selectedMediaId);
+                if (!mediaItem) {
                     notify('Select a media file from the library first', 'danger');
+                    return;
                 }
+                // Use newTrackName if entered, otherwise use the media filename (no extension)
+                const trackName = newTrackName.trim() || mediaItem.name.replace(/\.[^.]+$/, '');
+                const newTracks = [...tracks, { name: trackName, url: mediaItem.url, mediaId: mediaItem.id }];
+                updateProps({ tracks: newTracks });
+                setNewTrackName('');
+                setSelectedMediaId('');
+                notify('Track added');
             };
 
             const removeTrack = (idx) => {
@@ -656,9 +658,19 @@
                 <div>
                     <div className="text-sm font-medium text-gray-800 mb-1">{props.title}</div>
                     <button
-                        className="w-full rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2.5 mb-3 transition-colors"
-                        onClick={(e) => { e.stopPropagation(); if (playingIdx === null && tracks.length) { setPlayingIdx(0); if (tracks[0] && tracks[0].url) audioCtx.play(tracks[0].url); } else { setPlayingIdx(null); audioCtx.pause(); } }}>
-                        {playingIdx !== null ? '⏸ Pause All' : '▶ Play / Resume'}
+                        className="w-full rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-base font-bold py-4 mb-3 transition-colors flex items-center justify-center gap-3 shadow-lg"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (playingIdx === null && tracks.length) {
+                                setPlayingIdx(0);
+                                if (tracks[0]?.url) audioCtx.play(tracks[0].url);
+                            } else {
+                                setPlayingIdx(null);
+                                audioCtx.pause();
+                            }
+                        }}>
+                        <i className={`fas ${playingIdx !== null ? 'fa-pause' : 'fa-play'} text-xl`}></i>
+                        {playingIdx !== null ? 'Pause Playlist' : 'Play Playlist'}
                     </button>
                     <div className="flex flex-wrap gap-2 mb-2">
                         {tracks.map((track, i) => (
@@ -675,8 +687,15 @@
                                 className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-gray-400"
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addTrack(); } }}
                                 onClick={(e) => e.stopPropagation()} />
-                            <select value={selectedMediaId} onChange={(e) => setSelectedMediaId(e.target.value)}
-                                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-gray-400">
+                            <select value={selectedMediaId} onChange={(e) => {
+                                const id = e.target.value;
+                                setSelectedMediaId(id);
+                                // Auto-fill track name with file name (no extension)
+                                const mediaItem = mediaOptions.find(m => m.id === id);
+                                if (mediaItem && !newTrackName.trim()) {
+                                    setNewTrackName(mediaItem.name.replace(/\.[^.]+$/, ''));
+                                }
+                            }} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-gray-400">
                                 <option value="">Select media...</option>
                                 {mediaOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
@@ -708,7 +727,11 @@
                 if (existing) {
                     const reuse = confirm(`"${file.name}" is already in your media library. Reuse it instead of uploading again?`);
                     if (reuse) {
-                        updateProps({ audioUrl: existing.url });
+                        // Set label to filename (no extension)
+                        updateProps({
+                            audioUrl: existing.url,
+                            label: existing.name.replace(/\.[^.]+$/, '')
+                        });
                         notify('Reused existing file from library', 'success');
                         e.target.value = '';
                         return;
@@ -719,7 +742,11 @@
                 setProgress(0);
                 try {
                     const url = await uploadToCloudinaryWithProgress(file, (p) => setProgress(p));
-                    updateProps({ audioUrl: url });
+                    // Set both audioUrl AND label to the filename
+                    updateProps({
+                        audioUrl: url,
+                        label: file.name.replace(/\.[^.]+$/, '')
+                    });
                     const mediaItem = { id: nextId('media'), name: file.name, url };
                     dispatch({ type: 'ADD_MEDIA', item: mediaItem });
                     notify('Audio uploaded!', 'success');
@@ -770,7 +797,10 @@
                                     key={m.id}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        updateProps({ audioUrl: m.url });
+                                        updateProps({
+                                            audioUrl: m.url,
+                                            label: m.name.replace(/\.[^.]+$/, '')  // ← add this
+                                        });
                                         setShowMediaPicker(false);
                                         notify('Audio selected from library', 'success');
                                     }}

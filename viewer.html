@@ -33,7 +33,7 @@
             const [isPlaying, setIsPlaying] = useState(false);
             const [progress, setProgress] = useState(0);
             const [duration, setDuration] = useState(0);
-            const [volume, setVolume] = useState(0.8);
+            const [volume, setVolume] = useState(1.0);
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
 
@@ -157,53 +157,110 @@
             return `${m}:${sec.toString().padStart(2, '0')}`;
         }
 
-        const SoundButtonBlock = ({ props, audioCtx, media }) => {
-            const [uploadProgress] = useState(0);
-            const selectedName = media?.find(m => m.url === props.audioUrl)?.name || (props.audioUrl ? props.audioUrl.split('/').pop() : '');
-            const buttonLabel = props.label || 'Sound Button';
+        const SoundButtonBlock = ({ props, audioCtx }) => {
+            const buttonLabel = props.label || 'Play Sound';
+            const isThisPlaying = audioCtx.audioUrl === props.audioUrl && audioCtx.isPlaying;
+
             return (
                 <div className="mb-4">
                     <button
                         onClick={() => props.audioUrl ? audioCtx.togglePlay(props.audioUrl) : audioCtx.playBeep()}
                         style={{ background: props.color || '#1a1a2e' }}
-                        className="w-full rounded-full hover:opacity-90 text-white text-base font-semibold py-4 transition-all shadow-lg">
-                        {props.audioUrl
-                            ? (audioCtx.isPlaying && audioCtx.audioUrl === props.audioUrl ? '⏸ Pause' : '▶ Play ' + buttonLabel)
-                            : '🔊 ' + buttonLabel}
+                        className="w-full rounded-full hover:opacity-90 text-white text-base font-bold py-5 transition-all shadow-lg flex items-center justify-center gap-3"
+                    >
+                        <i className={`fas ${isThisPlaying ? 'fa-pause' : 'fa-play'} text-xl`}></i>
+                        <span>{buttonLabel}</span>
                     </button>
-                    {selectedName && (
-                        <div className="text-xs text-gray-400 mt-2 text-center truncate">🎵 {selectedName}</div>
-                    )}
                 </div>
             );
         };
 
         const PlaylistBlock = ({ props, audioCtx }) => {
             const tracks = props.tracks || [];
+            const [currentIdx, setCurrentIdx] = useState(null);
+            const [isPlaylistPlaying, setIsPlaylistPlaying] = useState(false);
 
-            const handleClick = (track, idx) => {
-                if (audioCtx.audioUrl === track.url && audioCtx.isPlaying) {
-                    audioCtx.pause();
+            // Auto-advance when track ends
+            useEffect(() => {
+                if (!isPlaylistPlaying || currentIdx === null) return;
+                if (audioCtx.audioUrl !== tracks[currentIdx]?.url) return;
+                if (audioCtx.isPlaying) return;
+
+                // Track just ended — advance
+                const nextIdx = currentIdx + 1;
+                if (nextIdx < tracks.length) {
+                    setCurrentIdx(nextIdx);
+                    audioCtx.play(tracks[nextIdx].url);
                 } else {
-                    audioCtx.play(track.url);
+                    // End of playlist
+                    setIsPlaylistPlaying(false);
+                    setCurrentIdx(null);
                 }
+            }, [audioCtx.isPlaying, audioCtx.audioUrl, isPlaylistPlaying, currentIdx, tracks]);
+
+            const startPlaylist = () => {
+                if (tracks.length === 0) return;
+                setIsPlaylistPlaying(true);
+                setCurrentIdx(0);
+                audioCtx.play(tracks[0].url);
+            };
+
+            const stopPlaylist = () => {
+                setIsPlaylistPlaying(false);
+                setCurrentIdx(null);
+                audioCtx.pause();
+            };
+
+            const playTrack = (idx) => {
+                setCurrentIdx(idx);
+                setIsPlaylistPlaying(true);
+                audioCtx.play(tracks[idx].url);
             };
 
             return (
                 <div className="viewer-playlist">
                     <div className="viewer-playlist-title">{props.title || 'Playlist'}</div>
+
+                    {tracks.length > 0 && (
+                        <button
+                            onClick={isPlaylistPlaying ? stopPlaylist : startPlaylist}
+                            style={{
+                                width: '100%',
+                                padding: '18px',
+                                borderRadius: '14px',
+                                background: isPlaylistPlaying ? '#EF4444' : 'var(--color-navy)',
+                                color: '#fff',
+                                border: 'none',
+                                fontFamily: 'inherit',
+                                fontSize: '16px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '12px',
+                                marginBottom: '16px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                transition: 'all 150ms',
+                            }}
+                        >
+                            <i className={`fas ${isPlaylistPlaying ? 'fa-stop' : 'fa-play'}`} style={{ fontSize: '18px' }}></i>
+                            {isPlaylistPlaying ? 'Stop Playlist' : 'Play Playlist'}
+                        </button>
+                    )}
+
                     {tracks.length === 0 ? (
                         <div style={{ textAlign: 'center', color: 'var(--color-gray-light)', fontSize: 13, padding: '20px 0' }}>
                             No tracks added yet
                         </div>
                     ) : (
                         tracks.map((track, i) => {
-                            const isPlaying = audioCtx.audioUrl === track.url && audioCtx.isPlaying;
+                            const isPlaying = currentIdx === i && audioCtx.isPlaying;
                             return (
                                 <div
                                     key={i}
                                     className={`viewer-track ${isPlaying ? 'playing' : ''}`}
-                                    onClick={() => handleClick(track, i)}
+                                    onClick={() => playTrack(i)}
                                 >
                                     <div className="viewer-track-icon">
                                         <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
