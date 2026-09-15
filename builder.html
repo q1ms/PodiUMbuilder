@@ -361,6 +361,7 @@
             SlidesManager: { label: 'Slides Manager', icon: 'folder' },
             ProgressControls: { label: 'Progress & Volume', icon: 'sliders' },
             Divider: { label: 'Divider', icon: 'divider' },
+            Countdown: { label: 'Countdown', icon: 'fa-hourglass-half' },
         };
 
         const DEFAULT_PROPS = {
@@ -370,6 +371,7 @@
             SlidesManager: { title: 'Slides Manager', subtitle: 'Upload PDF or images', color: '#1a1a2e' },
             ProgressControls: { title: 'Now Playing / Volume', color: '#1a1a2e' },
             Divider: { label: 'Divider', color: '#d1d5db' },
+            Countdown: { title: 'Countdown', color: '#0090A8', defaultSeconds: 300 },
         };
 
         const initialState = {
@@ -1000,6 +1002,17 @@
                         </div>
                     );
                 case 'Divider': return <DividerComponent id={id} props={props} dispatch={dispatch} />;
+                case 'Countdown':
+                    return (
+                        <div className="countdown-block" style={{ background: `linear-gradient(135deg, ${props.color || '#11233B'}, ${props.color || '#11233B'}dd)` }}>
+                            <div className="countdown-display">5:00</div>
+                            <div className="countdown-label">{props.title || 'Countdown'}</div>
+                            <div className="countdown-controls">
+                                <button className="primary">▶ Start</button>
+                                <button>Reset</button>
+                            </div>
+                        </div>
+                    );
                 default: return <div className="text-sm text-gray-400">Unknown block</div>;
             }
         }
@@ -1069,6 +1082,7 @@
                 SlidesManager: { label: 'Slides Manager', desc: 'Add presentation slides', icon: 'fa-images' },
                 ProgressControls: { label: 'Progress & Volume', desc: 'Audio controls with progress', icon: 'fa-sliders-h' },
                 Divider: { label: 'Divider', desc: 'Visual separator with label', icon: 'fa-minus' },
+                Countdown: { label: 'Countdown Timer', desc: 'Count down for ceremonies', icon: 'fa-hourglass-half' },
             };
             return (
                 <div className="builder-sidebar-left">

@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
         html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif; }
         #root { min-height: 100vh; }
@@ -177,32 +178,46 @@
             );
         };
 
-        const PlaylistBlock = ({ props, audioCtx, media }) => {
-            const [playingIdx, setPlayingIdx] = useState(null);
+        const PlaylistBlock = ({ props, audioCtx }) => {
             const tracks = props.tracks || [];
-            const togglePlay = (i) => {
-                const track = tracks[i];
-                if (!track?.url) return;
-                if (playingIdx === i && audioCtx.isPlaying) {
-                    setPlayingIdx(null);
+
+            const handleClick = (track, idx) => {
+                if (audioCtx.audioUrl === track.url && audioCtx.isPlaying) {
                     audioCtx.pause();
                 } else {
-                    setPlayingIdx(i);
                     audioCtx.play(track.url);
                 }
             };
+
             return (
-                <div className="mb-4">
-                    <div className="text-sm font-semibold text-gray-700 mb-2">{props.title || 'Playlist'}</div>
-                    <div className="flex flex-wrap gap-2">
-                        {tracks.map((track, i) => (
-                            <button key={i} onClick={() => togglePlay(i)}
-                                className={`text-sm px-4 py-2 rounded-full border transition-all ${playingIdx === i && audioCtx.isPlaying ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
-                                {playingIdx === i && audioCtx.isPlaying ? '⏸' : '▶'} {track.name}
-                            </button>
-                        ))}
-                        {tracks.length === 0 && <div className="text-xs text-gray-400">No tracks</div>}
-                    </div>
+                <div className="viewer-playlist">
+                    <div className="viewer-playlist-title">{props.title || 'Playlist'}</div>
+                    {tracks.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--color-gray-light)', fontSize: 13, padding: '20px 0' }}>
+                            No tracks added yet
+                        </div>
+                    ) : (
+                        tracks.map((track, i) => {
+                            const isPlaying = audioCtx.audioUrl === track.url && audioCtx.isPlaying;
+                            return (
+                                <div
+                                    key={i}
+                                    className={`viewer-track ${isPlaying ? 'playing' : ''}`}
+                                    onClick={() => handleClick(track, i)}
+                                >
+                                    <div className="viewer-track-icon">
+                                        <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                    </div>
+                                    <div className="viewer-track-name">{track.name}</div>
+                                    {isPlaying && (
+                                        <div style={{ fontSize: 11, color: 'var(--color-brand)', fontWeight: 600 }}>
+                                            ● LIVE
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             );
         };
@@ -231,6 +246,10 @@
             const [slides, setSlides] = useState([]);
             const [currentIndex, setCurrentIndex] = useState(0);
             const [fullscreen, setFullscreen] = useState(false);
+            const [autoplay, setAutoplay] = useState(false);
+            const [autoplayProgress, setAutoplayProgress] = useState(0);
+
+            const AUTOPLAY_DURATION = 5000; // 5 seconds per slide
 
             const handleFiles = async (e) => {
                 const files = Array.from(e.target.files);
@@ -255,7 +274,7 @@
                         const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
                         for (let i = 1; i <= pdf.numPages; i++) {
                             const page = await pdf.getPage(i);
-                            const viewport = page.getViewport({ scale: 1.5 });
+                            const viewport = page.getViewport({ scale: 2 });
                             const canvas = document.createElement('canvas');
                             canvas.width = viewport.width;
                             canvas.height = viewport.height;
@@ -277,6 +296,7 @@
 
             const goNext = () => slides.length && setCurrentIndex((currentIndex + 1) % slides.length);
             const goPrev = () => slides.length && setCurrentIndex((currentIndex - 1 + slides.length) % slides.length);
+            const goTo = (idx) => setCurrentIndex(idx);
 
             const deleteSlide = (idx) => {
                 const updated = slides.filter((_, i) => i !== idx);
@@ -294,23 +314,41 @@
                 else if (currentIndex === newIdx) setCurrentIndex(idx);
             };
 
-            // Fullscreen presentation mode
+            // Keyboard controls (both preview and fullscreen)
             useEffect(() => {
                 const handleKey = (e) => {
-                    if (!fullscreen) return;
-                    if (e.key === 'ArrowRight' || e.key === ' ') goNext();
-                    if (e.key === 'ArrowLeft') goPrev();
+                    if (!fullscreen && !autoplay) return;
+                    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
                     if (e.key === 'Escape') setFullscreen(false);
+                    if (e.key === 'f' || e.key === 'F') setFullscreen(f => !f);
                 };
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [fullscreen, slides.length, currentIndex]);
-            return (
-                <div className="mb-4">
-                    <div className="text-sm font-semibold text-gray-700 mb-2">{props.title || 'Slides'}</div>
+            }, [fullscreen, autoplay, slides.length, currentIndex]);
 
-                    {/* Upload area */}
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl py-4 text-center text-sm text-gray-400 cursor-pointer hover:border-gray-400 transition-colors mb-3">
+            // Autoplay
+            useEffect(() => {
+                if (!autoplay || slides.length <= 1) return;
+                setAutoplayProgress(0);
+                const startTime = Date.now();
+                const interval = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(100, (elapsed / AUTOPLAY_DURATION) * 100);
+                    setAutoplayProgress(progress);
+                    if (elapsed >= AUTOPLAY_DURATION) {
+                        goNext();
+                        setAutoplayProgress(0);
+                    }
+                }, 50);
+                return () => clearInterval(interval);
+            }, [autoplay, currentIndex, slides.length]);
+            return (
+                <div className="slide-presenter">
+                    {props.title && <div className="viewer-playlist-title">{props.title}</div>}
+
+                    {/* Upload zone */}
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl py-4 text-center text-sm text-gray-400 hover:border-gray-400 transition-colors cursor-pointer mb-4">
                         <label className="cursor-pointer block">
                             <span>📄 Click to upload PDF / PNG / JPEG</span>
                             <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleFiles} />
@@ -319,47 +357,63 @@
 
                     {slides.length > 0 && (
                         <>
-                            {/* Preview */}
-                            <div className="bg-black rounded-lg overflow-hidden mb-3" style={{ aspectRatio: '16/9' }}>
-                                <img src={slides[currentIndex]} alt="Slide" className="w-full h-full object-contain" />
+                            {/* Viewport */}
+                            <div className="slide-viewport" onClick={() => setFullscreen(true)} style={{ cursor: 'zoom-in' }}>
+                                <img src={slides[currentIndex]} alt={`Slide ${currentIndex + 1}`} />
+                                {autoplay && (
+                                    <div className="slide-autoplay-bar" style={{ width: autoplayProgress + '%' }}></div>
+                                )}
                             </div>
 
-                            {/* Controls */}
-                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                                <button onClick={goPrev} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">◀ Prev</button>
-                                <span className="text-xs text-gray-500">{currentIndex + 1} / {slides.length}</span>
-                                <button onClick={goNext} className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full px-4 py-2 text-sm font-medium">Next ▶</button>
-                                <button onClick={() => setFullscreen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-4 py-2 text-sm font-medium">▶ Fullscreen</button>
+                            {/* Navigation */}
+                            <div className="slide-nav">
+                                <button className="btn btn-secondary btn-sm" onClick={goPrev}>
+                                    <i className="fas fa-chevron-left"></i> Prev
+                                </button>
+                                <div className="slide-counter">
+                                    {currentIndex + 1} / {slides.length}
+                                </div>
+                                <button className="btn btn-secondary btn-sm" onClick={goNext}>
+                                    Next <i className="fas fa-chevron-right"></i>
+                                </button>
                             </div>
 
-                            {/* Thumbnails with delete + reorder controls */}
-                            <div className="flex gap-2 overflow-x-auto pb-3">
+                            {/* Secondary controls */}
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                                <button className="btn btn-primary btn-sm" onClick={() => setFullscreen(true)}>
+                                    <i className="fas fa-expand"></i> Present
+                                </button>
+                                <button
+                                    className={`btn btn-sm ${autoplay ? 'btn-danger' : 'btn-secondary'}`}
+                                    onClick={() => setAutoplay(!autoplay)}
+                                >
+                                    <i className={`fas ${autoplay ? 'fa-pause' : 'fa-play'}`}></i>
+                                    {autoplay ? ' Stop' : ' Auto-advance'}
+                                </button>
+                            </div>
+
+                            {/* Thumbnails */}
+                            <div className="slide-thumbs">
                                 {slides.map((s, i) => (
-                                    <div key={i} className="relative flex-shrink-0 group">
-                                        <img
-                                            src={s}
-                                            alt={`Thumb ${i+1}`}
-                                            onClick={() => setCurrentIndex(i)}
-                                            className={`h-16 w-24 object-cover rounded cursor-pointer border-2 ${i === currentIndex ? 'border-emerald-500' : 'border-transparent'}`}
-                                        />
-                                        <div className="absolute top-0.5 right-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); deleteSlide(i); }}
-                                                className="bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center"
-                                                title="Delete"
-                                            >✕</button>
-                                        </div>
-                                        <div className="absolute bottom-0.5 left-0.5 right-0.5 flex justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div key={i} className={`slide-thumb-item ${i === currentIndex ? 'active' : ''}`}>
+                                        <img src={s} alt={`Slide ${i + 1}`} onClick={() => goTo(i)} />
+                                        <span className="thumb-num">{i + 1}</span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: 2 }}>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); moveSlide(i, -1); }}
                                                 disabled={i === 0}
-                                                className="bg-black/70 hover:bg-black text-white rounded w-5 h-5 text-xs disabled:opacity-30"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#64748B', padding: 2 }}
                                                 title="Move left"
                                             >◀</button>
                                             <button
+                                                onClick={(e) => { e.stopPropagation(); deleteSlide(i); }}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#EF4444', padding: 2 }}
+                                                title="Delete"
+                                            >✕</button>
+                                            <button
                                                 onClick={(e) => { e.stopPropagation(); moveSlide(i, 1); }}
                                                 disabled={i === slides.length - 1}
-                                                className="bg-black/70 hover:bg-black text-white rounded w-5 h-5 text-xs disabled:opacity-30"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#64748B', padding: 2 }}
                                                 title="Move right"
                                             >▶</button>
                                         </div>
@@ -371,16 +425,29 @@
 
                     {/* Fullscreen mode */}
                     {fullscreen && (
-                        <div style={{
-                            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                            background: 'black', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }} onClick={(e) => { if (e.target === e.currentTarget) setFullscreen(false); }}>
-                            <img src={slides[currentIndex]} alt="Slide" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                            <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12, background: 'rgba(0,0,0,0.6)', padding: '10px 20px', borderRadius: 30 }}>
-                                <button onClick={goPrev} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>◀</button>
-                                <span style={{ color: 'white', fontSize: '0.9rem', alignSelf: 'center' }}>{currentIndex + 1} / {slides.length}</span>
-                                <button onClick={goNext} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>▶</button>
-                                <button onClick={() => setFullscreen(false)} style={{ color: 'white', background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', marginLeft: 12 }}>✕ Exit</button>
+                        <div className="slide-fullscreen" onClick={(e) => { if (e.target === e.currentTarget) setFullscreen(false); }}>
+                            <img src={slides[currentIndex]} alt={`Slide ${currentIndex + 1}`} />
+                            {autoplay && (
+                                <div className="slide-autoplay-bar" style={{
+                                    position: 'fixed',
+                                    bottom: 0,
+                                    left: 0,
+                                    height: 4,
+                                    width: autoplayProgress + '%',
+                                    background: 'var(--color-brand)',
+                                    transition: 'width 100ms linear',
+                                    zIndex: 100000,
+                                }}></div>
+                            )}
+                            <div className="slide-fullscreen-controls">
+                                <button onClick={goPrev} title="Previous (←)"><i className="fas fa-chevron-left"></i></button>
+                                <span className="fs-counter">{currentIndex + 1} / {slides.length}</span>
+                                <button onClick={goNext} title="Next (→ or Space)"><i className="fas fa-chevron-right"></i></button>
+                                <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)' }}></div>
+                                <button onClick={() => setAutoplay(!autoplay)} title="Auto-advance">
+                                    <i className={`fas ${autoplay ? 'fa-pause' : 'fa-play'}`}></i>
+                                </button>
+                                <button onClick={() => setFullscreen(false)} title="Exit (Esc)"><i className="fas fa-times"></i></button>
                             </div>
                         </div>
                     )}
@@ -433,6 +500,66 @@
             </div>
         );
 
+        const CountdownBlock = ({ props }) => {
+            const defaultSeconds = props.defaultSeconds || 300;
+            const [secondsLeft, setSecondsLeft] = useState(defaultSeconds);
+            const [running, setRunning] = useState(false);
+            const [initialSeconds, setInitialSeconds] = useState(defaultSeconds);
+
+            useEffect(() => {
+                if (!running) return;
+                if (secondsLeft <= 0) {
+                    setRunning(false);
+                    return;
+                }
+                const timer = setInterval(() => {
+                    setSecondsLeft(s => {
+                        if (s <= 1) { setRunning(false); return 0; }
+                        return s - 1;
+                    });
+                }, 1000);
+                return () => clearInterval(timer);
+            }, [running, secondsLeft]);
+
+            const format = (s) => {
+                const m = Math.floor(s / 60);
+                const sec = s % 60;
+                return `${m}:${sec.toString().padStart(2, '0')}`;
+            };
+
+            const setMinutes = (mins) => {
+                const s = mins * 60;
+                setSecondsLeft(s);
+                setInitialSeconds(s);
+                setRunning(false);
+            };
+
+            // Warning at <60s, danger at <15s
+            let className = 'countdown-display';
+            if (secondsLeft < 60 && secondsLeft > 15) className += ' warning';
+            else if (secondsLeft <= 15 && secondsLeft > 0) className += ' danger';
+
+            return (
+                <div className="countdown-block" style={{ background: `linear-gradient(135deg, ${props.color || '#11233B'}, ${props.color || '#11233B'}dd)` }}>
+                    <div className={className}>{format(secondsLeft)}</div>
+                    <div className="countdown-label">{props.title || 'Countdown'}</div>
+
+                    <div className="countdown-controls">
+                        <button className="primary" onClick={() => setRunning(!running)}>
+                            <i className={`fas ${running ? 'fa-pause' : 'fa-play'}`}></i> {running ? 'Pause' : 'Start'}
+                        </button>
+                        <button onClick={() => { setRunning(false); setSecondsLeft(initialSeconds); }}>
+                            <i className="fas fa-redo"></i> Reset
+                        </button>
+                        <button onClick={() => setMinutes(1)}>1m</button>
+                        <button onClick={() => setMinutes(3)}>3m</button>
+                        <button onClick={() => setMinutes(5)}>5m</button>
+                        <button onClick={() => setMinutes(10)}>10m</button>
+                    </div>
+                </div>
+            );
+        };
+
         function renderBlock(item, audioCtx, media) {
             const { type, props } = item;
             switch (type) {
@@ -442,6 +569,7 @@
                 case 'SlidesManager': return <SlidesManagerBlock key={item.id} props={props} />;
                 case 'ProgressControls': return <ProgressControlsBlock key={item.id} props={props} audioCtx={audioCtx} />;
                 case 'Divider': return <DividerBlock key={item.id} props={props} />;
+                case 'Countdown': return <CountdownBlock key={item.id} props={props} />;
                 default: return null;
             }
         }
@@ -454,7 +582,24 @@
             const [activeTab, setActiveTab] = useState(null);
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
+            const [wholeFullscreen, setWholeFullscreen] = useState(false);
             const audioCtx = useContext(AudioContext);
+
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                    setWholeFullscreen(true);
+                } else {
+                    document.exitFullscreen();
+                    setWholeFullscreen(false);
+                }
+            };
+
+            useEffect(() => {
+                const handleChange = () => setWholeFullscreen(!!document.fullscreenElement);
+                document.addEventListener('fullscreenchange', handleChange);
+                return () => document.removeEventListener('fullscreenchange', handleChange);
+            }, []);
 
             // Expose audioCtx globally for CustomUploads
             useEffect(() => { window.__audioCtx = audioCtx; }, [audioCtx]);
@@ -522,6 +667,10 @@
 
             return (
                 <div style={{ minHeight: '100vh', background: site.bgColor || '#F8F9FA', padding: '32px 16px' }}>
+                    <button className="fullscreen-toggle" onClick={toggleFullscreen}>
+                        <i className={`fas ${wholeFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
+                        {wholeFullscreen ? 'Exit' : 'Fullscreen'}
+                    </button>
                     <div style={{ maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 24, boxShadow: '0 20px 50px rgba(17, 35, 59, 0.12)', overflow: 'hidden' }}>
                         {/* Header - CENTERED logo + name */}
                         <div style={{
