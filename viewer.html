@@ -178,6 +178,7 @@
         const PlaylistBlock = ({ props, audioCtx }) => {
             const tracks = props.tracks || [];
             const [currentIdx, setCurrentIdx] = useState(null);
+            const [isPlaylistActive, setIsPlaylistActive] = useState(false); // track position even when paused
             const [isPlaylistPlaying, setIsPlaylistPlaying] = useState(false);
 
             // Auto-advance when track ends
@@ -192,14 +193,42 @@
                     setCurrentIdx(nextIdx);
                     audioCtx.play(tracks[nextIdx].url);
                 } else {
-                    // End of playlist
+                    // Reached end of playlist — reset position so next "Play" starts fresh
                     setIsPlaylistPlaying(false);
+                    setIsPlaylistActive(false);
                     setCurrentIdx(null);
                 }
             }, [audioCtx.isPlaying, audioCtx.audioUrl, isPlaylistPlaying, currentIdx, tracks]);
 
-            const startPlaylist = () => {
+            // If user pauses/resumes via global stop button, sync state
+            useEffect(() => {
+                if (!isPlaylistPlaying) return;
+                if (audioCtx.audioUrl && currentIdx !== null && audioCtx.audioUrl !== tracks[currentIdx]?.url) {
+                    // Someone played a different track (e.g. Sound Button) — stop playlist mode
+                    setIsPlaylistPlaying(false);
+                }
+            }, [audioCtx.audioUrl]);
+
+            const handlePlayPause = () => {
                 if (tracks.length === 0) return;
+
+                // CASE 1: Currently playing → pause
+                if (isPlaylistPlaying && audioCtx.isPlaying) {
+                    audioCtx.pause();
+                    setIsPlaylistPlaying(false);
+                    // Keep currentIdx so we can resume
+                    return;
+                }
+
+                // CASE 2: Paused mid-playlist → resume current track
+                if (isPlaylistActive && currentIdx !== null) {
+                    setIsPlaylistPlaying(true);
+                    audioCtx.play(tracks[currentIdx].url);
+                    return;
+                }
+
+                // CASE 3: Fresh start
+                setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
                 setCurrentIdx(0);
                 audioCtx.play(tracks[0].url);
@@ -207,46 +236,92 @@
 
             const stopPlaylist = () => {
                 setIsPlaylistPlaying(false);
+                setIsPlaylistActive(false);
                 setCurrentIdx(null);
                 audioCtx.pause();
             };
 
             const playTrack = (idx) => {
                 setCurrentIdx(idx);
+                setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
                 audioCtx.play(tracks[idx].url);
             };
+
+            // Determine button label
+            let buttonLabel = 'Play Playlist';
+            let buttonIcon = 'fa-play';
+            let buttonColor = 'var(--color-navy)';
+
+            if (isPlaylistPlaying && audioCtx.isPlaying) {
+                buttonLabel = 'Pause Playlist';
+                buttonIcon = 'fa-pause';
+                buttonColor = '#F59E0B';
+            } else if (isPlaylistActive && currentIdx !== null) {
+                buttonLabel = 'Resume Playlist';
+                buttonIcon = 'fa-play';
+                buttonColor = 'var(--color-brand)';
+            }
 
             return (
                 <div className="viewer-playlist">
                     <div className="viewer-playlist-title">{props.title || 'Playlist'}</div>
 
                     {tracks.length > 0 && (
-                        <button
-                            onClick={isPlaylistPlaying ? stopPlaylist : startPlaylist}
-                            style={{
-                                width: '100%',
-                                padding: '18px',
-                                borderRadius: '14px',
-                                background: isPlaylistPlaying ? '#EF4444' : 'var(--color-navy)',
-                                color: '#fff',
-                                border: 'none',
-                                fontFamily: 'inherit',
-                                fontSize: '16px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '12px',
-                                marginBottom: '16px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                transition: 'all 150ms',
-                            }}
-                        >
-                            <i className={`fas ${isPlaylistPlaying ? 'fa-stop' : 'fa-play'}`} style={{ fontSize: '18px' }}></i>
-                            {isPlaylistPlaying ? 'Stop Playlist' : 'Play Playlist'}
-                        </button>
+                        <>
+                            <button
+                                onClick={handlePlayPause}
+                                style={{
+                                    width: '100%',
+                                    padding: '18px',
+                                    borderRadius: '14px',
+                                    background: buttonColor,
+                                    color: '#fff',
+                                    border: 'none',
+                                    fontFamily: 'inherit',
+                                    fontSize: '16px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '12px',
+                                    marginBottom: isPlaylistActive ? '10px' : '16px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    transition: 'all 150ms',
+                                }}
+                            >
+                                <i className={`fas ${buttonIcon}`} style={{ fontSize: '18px' }}></i>
+                                {buttonLabel}
+                            </button>
+
+                            {/* Stop button — only shows when playlist is active */}
+                            {isPlaylistActive && (
+                                <button
+                                    onClick={stopPlaylist}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        borderRadius: '10px',
+                                        background: 'transparent',
+                                        color: 'var(--color-gray)',
+                                        border: '1px solid var(--color-gray-lighter)',
+                                        fontFamily: 'inherit',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                        marginBottom: '16px',
+                                        transition: 'all 150ms',
+                                    }}
+                                >
+                                    <i className="fas fa-stop"></i> Stop & Reset
+                                </button>
+                            )}
+                        </>
                     )}
 
                     {tracks.length === 0 ? (
@@ -255,18 +330,26 @@
                         </div>
                     ) : (
                         tracks.map((track, i) => {
-                            const isPlaying = currentIdx === i && audioCtx.isPlaying;
+                            const isCurrent = currentIdx === i;
+                            const isPlayingThis = isCurrent && audioCtx.isPlaying && isPlaylistPlaying;
                             return (
                                 <div
                                     key={i}
-                                    className={`viewer-track ${isPlaying ? 'playing' : ''}`}
+                                    className={`viewer-track ${isPlayingThis ? 'playing' : ''}`}
                                     onClick={() => playTrack(i)}
                                 >
-                                    <div className="viewer-track-icon">
-                                        <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                    <div className="viewer-track-icon" style={isCurrent && !isPlayingThis ? { background: 'var(--color-gray)' } : undefined}>
+                                        <i className={`fas ${isPlayingThis ? 'fa-pause' : 'fa-play'}`}></i>
                                     </div>
-                                    <div className="viewer-track-name">{track.name}</div>
-                                    {isPlaying && (
+                                    <div className="viewer-track-name">
+                                        {track.name}
+                                        {isCurrent && !isPlayingThis && (
+                                            <span style={{ fontSize: 11, color: 'var(--color-gray-light)', marginLeft: 8 }}>
+                                                (paused)
+                                            </span>
+                                        )}
+                                    </div>
+                                    {isPlayingThis && (
                                         <div style={{ fontSize: 11, color: 'var(--color-brand)', fontWeight: 600 }}>
                                             ● LIVE
                                         </div>
