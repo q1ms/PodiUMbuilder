@@ -33,7 +33,7 @@
             const [isPlaying, setIsPlaying] = useState(false);
             const [progress, setProgress] = useState(0);
             const [duration, setDuration] = useState(0);
-            const [volume, setVolume] = useState(1.0);
+            const [volume, setVolume] = useState(1.0); // 100% default
             const [endedCounter, setEndedCounter] = useState(0);
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
@@ -43,25 +43,33 @@
                 audio.crossOrigin = 'anonymous';
                 audio.preload = 'auto';
                 audioRef.current = audio;
-                const onTime = () => { if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100); };
-                const onMeta = () => setDuration(audio.duration);
-                const onEnd = () => {
+                const handleTimeUpdate = () => {
+                    if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
+                };
+                const handleLoadedMetadata = () => setDuration(audio.duration);
+                const handleEnded = () => {
                     setIsPlaying(false);
                     setProgress(0);
                     setEndedCounter(c => c + 1);  // ← signals a track naturally ended
                 };
-                audio.addEventListener('timeupdate', onTime);
-                audio.addEventListener('loadedmetadata', onMeta);
-                audio.addEventListener('ended', onEnd);
+
+                audio.addEventListener('timeupdate', handleTimeUpdate);
+                audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+                audio.addEventListener('ended', handleEnded);
+
                 return () => {
-                    audio.pause(); audio.src = '';
+                    audio.pause();
+                    audio.src = '';
+                    // Defensive: never leave a fade timer running after teardown
                     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-                    audio.removeEventListener('timeupdate', onTime);
-                    audio.removeEventListener('loadedmetadata', onMeta);
-                    audio.removeEventListener('ended', onEnd);
+                    fadeIntervalRef.current = null;
+                    audio.removeEventListener('timeupdate', handleTimeUpdate);
+                    audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                    audio.removeEventListener('ended', handleEnded);
                 };
             }, []);
 
+            // ===== FADE HELPER =====
             const fadeTo = (targetVol, duration = 800, callback) => {
                 const audio = audioRef.current;
                 if (!audio) return;
@@ -69,8 +77,7 @@
 
                 const startVol = audio.volume;
                 const startTime = Date.now();
-                const steps = 30;
-                const stepTime = duration / steps;
+                const stepTime = 16; // ~60fps
 
                 fadeIntervalRef.current = setInterval(() => {
                     const elapsed = Date.now() - startTime;
@@ -84,75 +91,83 @@
                 }, stepTime);
             };
 
+            // ===== FRESH PLAY (resets to 0:00) — used by SoundButton and new tracks =====
             const play = (url) => {
                 const audio = audioRef.current;
                 if (!audio) return;
 
-                // Only reload if the source is actually different
-                // Compare normalized URLs to avoid false mismatches
                 const currentSrc = audio.src ? audio.src.split('?')[0] : '';
                 const targetSrc = url.split('?')[0];
+                const isSameTrack = currentSrc === targetSrc;
 
-                if (currentSrc !== targetSrc) {
-                    // Different track — reset and load
-                    audio.src = url;
-                    audio.load();
+                // If something is currently playing → crossfade
+                if (!audio.paused && audio.src) {
+                    fadeTo(0, 400, () => {
+                        audio.pause();
+                        if (!isSameTrack) {
+                            audio.src = url;
+                            audio.load();
+                        }
+                        audio.currentTime = 0; // always fresh for SoundButton
+                        audio.volume = 0;
+                        audio.play().then(() => {
+                            setIsPlaying(true);
+                            fadeTo(volume, 800);
+                        }).catch((err) => console.warn('Play error:', err));
+                        setAudioUrl(url);
+                    });
+                } else {
+                    // Nothing playing → start fresh with fade in
+                    if (!isSameTrack) {
+                        audio.src = url;
+                        audio.load();
+                    }
+                    audio.currentTime = 0; // ← ensures SoundButton always starts at 0
+                    audio.volume = 0;
+                    audio.play().then(() => {
+                        setIsPlaying(true);
+                        fadeTo(volume, 800);
+                    }).catch((err) => console.warn('Play error:', err));
+                    setAudioUrl(url);
                 }
-                // If same track, we don't touch src — position is preserved
-
-                audio.volume = 0;
-                audio.play().then(() => {
-                    setIsPlaying(true);
-                    fadeTo(volume, 800); // fade IN
-                }).catch((err) => {
-                    console.error('Play failed:', err);
-                });
-                setAudioUrl(url);
             };
 
-            const pause = () => {
-                const audio = audioRef.current;
-                if (!audio) return;
-                fadeTo(0, 600, () => {   // fade OUT
-                    audio.pause();
-                    setIsPlaying(false);
-                    // ← No audio.currentTime = 0 here! Position is preserved.
-                });
-            };
-
-            // Resume from current position without reloading the source
+            // ===== RESUME (keeps position) — used only by Playlist =====
             const resume = () => {
                 const audio = audioRef.current;
-                if (!audio) return;
-                // Ensure we have a valid source
-                if (!audio.src) return;
-                // Don't reset currentTime, don't call load()
-                audio.volume = 0;
+                if (!audio || !audio.src) return;
+                audio.volume = 0; // fade in
                 audio.play().then(() => {
                     setIsPlaying(true);
                     fadeTo(volume, 800);
-                }).catch((err) => {
-                    console.error('Resume failed:', err);
+                }).catch((err) => console.warn('Resume error:', err));
+            };
+
+            // ===== PAUSE with fade out (keeps position) =====
+            const pause = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                fadeTo(0, 400, () => {
+                    audio.pause();
+                    setIsPlaying(false);
                 });
             };
 
-            // Stop all sounds — PRESERVES position (for resume)
+            // ===== STOP ALL with fade out (KEEPS position — use resume() to continue) =====
             const stopAll = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                fadeTo(0, 600, () => {
+                fadeTo(0, 400, () => {
                     audio.pause();
                     setIsPlaying(false);
-                    // ← Do NOT reset currentTime (position is preserved)
-                    // ← Do NOT clear audioUrl (so resume can find it)
                 });
             };
 
-            // Full reset — clears position (used for explicit "Stop & Reset")
+            // ===== RESET (clears position — true stop) =====
             const resetAll = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                fadeTo(0, 600, () => {
+                fadeTo(0, 400, () => {
                     audio.pause();
                     audio.currentTime = 0;
                     setIsPlaying(false);
@@ -162,28 +177,40 @@
             };
             const togglePlay = (url) => {
                 if (!url) return;
-                if (audioUrl === url && isPlaying) pause(); else play(url);
+                if (audioUrl === url && isPlaying) {
+                    pause();
+                } else {
+                    play(url);
+                }
             };
-            const seek = (v) => {
+
+            const seek = (value) => {
                 const audio = audioRef.current;
                 if (!audio || !audio.duration) return;
-                audio.currentTime = (v / 100) * audio.duration;
-                setProgress(v);
+                audio.currentTime = (value / 100) * audio.duration;
+                setProgress(value);
             };
-            const changeVolume = (v) => {
-                const vol = v / 100;
-                setVolume(vol);
-                if (audioRef.current) audioRef.current.volume = vol;
+
+            const changeVolume = (val) => {
+                const v = val / 100;
+                setVolume(v);
+                if (audioRef.current && !fadeIntervalRef.current) {
+                    audioRef.current.volume = v;
+                }
             };
+
             const playBeep = () => {
                 try {
                     const ctx = new (window.AudioContext || window.webkitAudioContext)();
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
-                    osc.connect(gain); gain.connect(ctx.destination);
-                    osc.frequency.value = 880; osc.type = 'sine';
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = 880;
+                    osc.type = 'sine';
                     gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.15);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.15);
                 } catch (e) {}
             };
 
@@ -195,14 +222,14 @@
                     duration,
                     volume,
                     play,
-                    pause,
                     resume,
+                    pause,
+                    stopAll,
+                    resetAll,
                     togglePlay,
                     seek,
                     changeVolume,
                     playBeep,
-                    stopAll,      // ← stop, but keep position
-                    resetAll,     // ← stop AND reset to 0
                     endedCounter,
                 }}>
                     {children}
@@ -289,10 +316,10 @@
                     return;
                 }
 
-                // CASE 2: Paused mid-track → resume SAME track from SAME position
+                // CASE 2: Paused mid-track → RESUME from current position
                 if (isPlaylistActive && currentIdx !== null && audioCtx.audioUrl === tracks[currentIdx]?.url) {
                     setIsPlaylistPlaying(true);
-                    audioCtx.resume();   // ← use resume, NOT play()
+                    audioCtx.resume();   // ← keeps position
                     return;
                 }
 
@@ -300,19 +327,14 @@
                 setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
                 setCurrentIdx(0);
-                audioCtx.play(tracks[0].url);
+                audioCtx.play(tracks[0].url);  // ← starts from 0:00
             };
 
             const stopPlaylist = () => {
                 setIsPlaylistPlaying(false);
                 setIsPlaylistActive(false);
                 setCurrentIdx(null);
-                // Use resetAll so this button actually resets to the beginning
-                if (audioCtx.resetAll) {
-                    audioCtx.resetAll();
-                } else {
-                    audioCtx.stopAll ? audioCtx.stopAll() : audioCtx.pause();
-                }
+                audioCtx.resetAll();  // ← full reset for Stop & Reset
             };
 
             const playTrack = (idx) => {
