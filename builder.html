@@ -359,7 +359,6 @@
             Playlist: { label: 'Playlist', icon: 'volume' },
             CustomUploads: { label: 'Custom Uploads', icon: 'upload' },
             SlidesManager: { label: 'Slides Manager', icon: 'folder' },
-            ProgressControls: { label: 'Progress & Volume', icon: 'sliders' },
             Divider: { label: 'Divider', icon: 'divider' },
             Countdown: { label: 'Countdown', icon: 'fa-hourglass-half' },
         };
@@ -369,7 +368,6 @@
             Playlist: { title: 'Playlist', tracks: [], color: '#1a1a2e' },
             CustomUploads: { title: 'Custom Uploads', subtitle: 'Upload audio files', color: '#1a1a2e', files: [] },
             SlidesManager: { title: 'Slides Manager', subtitle: 'Upload PDF or images', color: '#1a1a2e' },
-            ProgressControls: { title: 'Now Playing / Volume', color: '#1a1a2e' },
             Divider: { label: 'Divider', color: '#d1d5db' },
             Countdown: { title: 'Countdown', color: '#0090A8', defaultSeconds: 300 },
         };
@@ -385,6 +383,7 @@
             activeTab: 'main',
             components: [],
             selectedId: null,
+            fadeDuration: 800,  // ← audio fade in/out duration (milliseconds)
             _id: null, // MongoDB id
         };
 
@@ -406,6 +405,7 @@
                         activeTab: data.activeTab || 'main',
                         components: data.components || [],
                         selectedId: null,
+                        fadeDuration: data.fadeDuration ?? 800,  // ← preserve fade setting
                         __lastAction: undefined,
                     };
                 }
@@ -488,6 +488,9 @@
                 case 'SET_TOP_BAR_COLOR':
                     newState = { ...state, topBarColor: action.color };
                     break;
+                case 'SET_FADE_DURATION':
+                    newState = { ...state, fadeDuration: action.value };
+                    break;
                 case 'ADD_MEDIA': {
                     const media = [...(state.media || []), action.item];
                     newState = { ...state, media };
@@ -546,6 +549,7 @@
                         bgColor: state.bgColor || '#ffffff',
                         topBarColor: state.topBarColor || '#ffffff',
                         media: state.media || [],
+                        fadeDuration: state.fadeDuration ?? 800,  // ← persist fade duration
                     },
                 };
 
@@ -1110,7 +1114,6 @@
                 Playlist: { label: 'Playlist', desc: 'Multiple tracks in one place', icon: 'fa-list' },
                 CustomUploads: { label: 'Custom Uploads', desc: 'Upload and play custom audio', icon: 'fa-cloud-upload-alt' },
                 SlidesManager: { label: 'Slides Manager', desc: 'Add presentation slides', icon: 'fa-images' },
-                ProgressControls: { label: 'Progress & Volume', desc: 'Audio controls with progress', icon: 'fa-sliders-h' },
                 Divider: { label: 'Divider', desc: 'Visual separator with label', icon: 'fa-minus' },
                 Countdown: { label: 'Countdown Timer', desc: 'Count down for ceremonies', icon: 'fa-hourglass-half' },
             };
@@ -1227,6 +1230,29 @@
                                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                         <input type="color" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} style={{ width: 40, height: 40, border: '1px solid var(--color-gray-lighter)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }} />
                                         <input type="text" value={state.topBarColor || '#ffffff'} onChange={(e) => dispatch({ type: 'SET_TOP_BAR_COLOR', color: e.target.value })} className="input" style={{ flex: 1 }} />
+                                    </div>
+                                </div>
+
+                                <div className="prop-group">
+                                    <h4>Audio</h4>
+                                    <div className="prop-field">
+                                        <label>
+                                            Fade Duration: <strong style={{ color: 'var(--color-brand)' }}>{state.fadeDuration}ms</strong>
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="3000"
+                                            step="100"
+                                            value={state.fadeDuration || 800}
+                                            onChange={(e) => dispatch({ type: 'SET_FADE_DURATION', value: parseInt(e.target.value) })}
+                                            style={{ width: '100%', accentColor: 'var(--color-brand)' }}
+                                        />
+                                        <div className="hint">
+                                            {state.fadeDuration === 0
+                                                ? 'Instant (no fade)'
+                                                : `${(state.fadeDuration / 1000).toFixed(1)}s fade in/out`}
+                                        </div>
                                     </div>
                                 </div>
                             </>
