@@ -87,15 +87,26 @@
             const play = (url) => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                if (audio.src !== url) {
+
+                // Only reload if the source is actually different
+                // Compare normalized URLs to avoid false mismatches
+                const currentSrc = audio.src ? audio.src.split('?')[0] : '';
+                const targetSrc = url.split('?')[0];
+
+                if (currentSrc !== targetSrc) {
+                    // Different track — reset and load
                     audio.src = url;
                     audio.load();
                 }
+                // If same track, we don't touch src — position is preserved
+
                 audio.volume = 0;
                 audio.play().then(() => {
                     setIsPlaying(true);
                     fadeTo(volume, 800); // fade IN
-                }).catch(() => {});
+                }).catch((err) => {
+                    console.error('Play failed:', err);
+                });
                 setAudioUrl(url);
             };
 
@@ -105,9 +116,40 @@
                 fadeTo(0, 600, () => {   // fade OUT
                     audio.pause();
                     setIsPlaying(false);
+                    // ← No audio.currentTime = 0 here! Position is preserved.
                 });
             };
+
+            // Resume from current position without reloading the source
+            const resume = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                // Ensure we have a valid source
+                if (!audio.src) return;
+                // Don't reset currentTime, don't call load()
+                audio.volume = 0;
+                audio.play().then(() => {
+                    setIsPlaying(true);
+                    fadeTo(volume, 800);
+                }).catch((err) => {
+                    console.error('Resume failed:', err);
+                });
+            };
+
+            // Stop all sounds — PRESERVES position (for resume)
             const stopAll = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                fadeTo(0, 600, () => {
+                    audio.pause();
+                    setIsPlaying(false);
+                    // ← Do NOT reset currentTime (position is preserved)
+                    // ← Do NOT clear audioUrl (so resume can find it)
+                });
+            };
+
+            // Full reset — clears position (used for explicit "Stop & Reset")
+            const resetAll = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
                 fadeTo(0, 600, () => {
@@ -146,7 +188,23 @@
             };
 
             return (
-                <AudioContext.Provider value={{ audioUrl, isPlaying, progress, duration, volume, play, pause, togglePlay, seek, changeVolume, playBeep, stopAll, endedCounter }}>
+                <AudioContext.Provider value={{
+                    audioUrl,
+                    isPlaying,
+                    progress,
+                    duration,
+                    volume,
+                    play,
+                    pause,
+                    resume,
+                    togglePlay,
+                    seek,
+                    changeVolume,
+                    playBeep,
+                    stopAll,      // ← stop, but keep position
+                    resetAll,     // ← stop AND reset to 0
+                    endedCounter,
+                }}>
                     {children}
                 </AudioContext.Provider>
             );
@@ -234,7 +292,7 @@
                 // CASE 2: Paused mid-track → resume SAME track from SAME position
                 if (isPlaylistActive && currentIdx !== null && audioCtx.audioUrl === tracks[currentIdx]?.url) {
                     setIsPlaylistPlaying(true);
-                    audioCtx.play(tracks[currentIdx].url);  // audio context resumes from currentTime
+                    audioCtx.resume();   // ← use resume, NOT play()
                     return;
                 }
 
@@ -249,10 +307,22 @@
                 setIsPlaylistPlaying(false);
                 setIsPlaylistActive(false);
                 setCurrentIdx(null);
-                audioCtx.stopAll ? audioCtx.stopAll() : audioCtx.pause();
+                // Use resetAll so this button actually resets to the beginning
+                if (audioCtx.resetAll) {
+                    audioCtx.resetAll();
+                } else {
+                    audioCtx.stopAll ? audioCtx.stopAll() : audioCtx.pause();
+                }
             };
 
             const playTrack = (idx) => {
+                // If clicking the same paused track, just resume
+                if (isPlaylistActive && currentIdx === idx && !audioCtx.isPlaying) {
+                    setIsPlaylistPlaying(true);
+                    audioCtx.resume();
+                    return;
+                }
+                // Otherwise start that track fresh
                 setCurrentIdx(idx);
                 setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
@@ -610,7 +680,7 @@
             <div className="mb-4 bg-gray-50 rounded-xl p-4">
                 <div className="text-xs text-gray-500 mb-2 flex justify-between">
                     <span>{props.title || 'Now Playing'}</span>
-                    <span>{audioCtx.audioUrl ? '▶ Playing' : '⏸ Idle'}</span>
+                    <span>{audioCtx.isPlaying ? '▶ Playing' : (audioCtx.audioUrl ? '⏸ Paused' : '⏸ Idle')}</span>
                 </div>
 
                 {/* Progress bar - full width */}
@@ -631,13 +701,23 @@
                     <span className="text-xs text-gray-400 w-8 text-right">{Math.round(audioCtx.volume * 100)}%</span>
                 </div>
 
-                {/* Stop All Sounds button - 75% width, centered */}
+                {/* Pause All Sounds — keeps position, so it can be resumed again */}
                 <div className="flex justify-center mt-3">
                     <button
-                        onClick={() => audioCtx.stopAll && audioCtx.stopAll()}
-                        style={{ width: '75%', background: '#EF4444' }}
+                        onClick={() => {
+                            if (audioCtx.isPlaying) {
+                                // Pause everything, but KEEP the position (resumable)
+                                audioCtx.stopAll && audioCtx.stopAll();
+                            } else if (audioCtx.audioUrl) {
+                                // Something is loaded but paused → resume from same position
+                                audioCtx.resume && audioCtx.resume();
+                            }
+                        }}
+                        style={{ width: '75%', background: audioCtx.isPlaying ? '#EF4444' : 'var(--color-brand)' }}
                         className="text-base font-semibold text-white hover:opacity-90 px-6 py-3 rounded-full transition-colors">
-                        ⏹ Stop All Sounds
+                        {audioCtx.isPlaying
+                            ? '⏸ Pause All Sounds'
+                            : (audioCtx.audioUrl ? '▶ Resume All Sounds' : '⏸ Pause All Sounds')}
                     </button>
                 </div>
             </div>
