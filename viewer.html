@@ -35,6 +35,8 @@
             const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(1.0);
             const [endedCounter, setEndedCounter] = useState(0);
+            const [trackName, setTrackName] = useState('');       // display name of the current block/track
+            const [fadeEnabled, setFadeEnabled] = useState(true); // global fade on/off
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
             const fadeDurationRef = useRef(fadeDuration);
@@ -78,8 +80,10 @@
                 if (!audio) return;
                 if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
 
-                // If duration is 0, set immediately
-                if (duration <= 0) {
+                // Respect fade enabled state
+                const effectiveDuration = fadeEnabled ? duration : 0;
+
+                if (effectiveDuration <= 0) {
                     audio.volume = targetVol;
                     if (callback) callback();
                     return;
@@ -90,7 +94,7 @@
 
                 fadeIntervalRef.current = setInterval(() => {
                     const elapsed = Date.now() - startTime;
-                    const ratio = Math.min(1, elapsed / duration);
+                    const ratio = Math.min(1, elapsed / effectiveDuration);
                     audio.volume = Math.max(0, Math.min(1, startVol + (targetVol - startVol) * ratio));
                     if (ratio >= 1) {
                         clearInterval(fadeIntervalRef.current);
@@ -101,10 +105,13 @@
             };
 
             // ===== PLAY (always from 0:00) — crossfades when switching while playing =====
-            const play = (url) => {
+            const play = (url, displayName) => {
                 const audio = audioRef.current;
                 if (!audio) return;
                 const fade = fadeDurationRef.current;
+
+                // Set the display name
+                if (displayName) setTrackName(displayName);
 
                 const currentSrc = audio.src ? audio.src.split('?')[0] : '';
                 const targetSrc = url.split('?')[0];
@@ -178,13 +185,14 @@
                     setIsPlaying(false);
                     setProgress(0);
                     setAudioUrl(null);
+                    setTrackName('');
                 });
             };
 
-            const togglePlay = (url) => {
+            const togglePlay = (url, displayName) => {
                 if (!url) return;
                 if (audioUrl === url && isPlaying) pause();
-                else play(url);
+                else play(url, displayName);
             };
 
             const seek = (value) => {
@@ -220,6 +228,8 @@
             return (
                 <AudioContext.Provider value={{
                     audioUrl, isPlaying, progress, duration, volume,
+                    trackName, setTrackName,
+                    fadeEnabled, setFadeEnabled,
                     play, resume, pause, stopAll, resetAll,
                     togglePlay, seek, changeVolume, playBeep, endedCounter,
                 }}>
@@ -239,13 +249,19 @@
         }
 
         const SoundButtonBlock = ({ props, audioCtx }) => {
-            const buttonLabel = props.label || 'Play Sound';
+            const buttonLabel = props.label || 'Sound Button';
             const isThisPlaying = audioCtx.audioUrl === props.audioUrl && audioCtx.isPlaying;
 
             return (
                 <div className="mb-4">
                     <button
-                        onClick={() => props.audioUrl ? audioCtx.togglePlay(props.audioUrl) : audioCtx.playBeep()}
+                        onClick={() => {
+                            if (props.audioUrl) {
+                                audioCtx.togglePlay(props.audioUrl, buttonLabel);  // ← pass label
+                            } else {
+                                audioCtx.playBeep();
+                            }
+                        }}
                         style={{ background: props.color || '#1a1a2e' }}
                         className="w-full rounded-full hover:opacity-90 text-white text-base font-bold py-5 transition-all shadow-lg flex items-center justify-center gap-3"
                     >
@@ -277,7 +293,7 @@
                 const nextIdx = currentIdx + 1;
                 if (nextIdx < tracks.length) {
                     setCurrentIdx(nextIdx);
-                    audioCtx.play(tracks[nextIdx].url);
+                    audioCtx.play(tracks[nextIdx].url, tracks[nextIdx].name);  // ← pass name
                 } else {
                     // End of playlist — reset
                     setIsPlaylistPlaying(false);
@@ -318,7 +334,7 @@
                 setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
                 setCurrentIdx(0);
-                audioCtx.play(tracks[0].url);  // ← starts from 0:00
+                audioCtx.play(tracks[0].url, tracks[0].name);  // ← pass name
             };
 
             const stopPlaylist = () => {
@@ -339,7 +355,7 @@
                 setCurrentIdx(idx);
                 setIsPlaylistActive(true);
                 setIsPlaylistPlaying(true);
-                audioCtx.play(tracks[idx].url);
+                audioCtx.play(tracks[idx].url, tracks[idx].name);  // ← pass name
             };
 
             // Button label logic
@@ -697,66 +713,6 @@
             </div>
         );
 
-        const CountdownBlock = ({ props }) => {
-            const defaultSeconds = props.defaultSeconds || 300;
-            const [secondsLeft, setSecondsLeft] = useState(defaultSeconds);
-            const [running, setRunning] = useState(false);
-            const [initialSeconds, setInitialSeconds] = useState(defaultSeconds);
-
-            useEffect(() => {
-                if (!running) return;
-                if (secondsLeft <= 0) {
-                    setRunning(false);
-                    return;
-                }
-                const timer = setInterval(() => {
-                    setSecondsLeft(s => {
-                        if (s <= 1) { setRunning(false); return 0; }
-                        return s - 1;
-                    });
-                }, 1000);
-                return () => clearInterval(timer);
-            }, [running, secondsLeft]);
-
-            const format = (s) => {
-                const m = Math.floor(s / 60);
-                const sec = s % 60;
-                return `${m}:${sec.toString().padStart(2, '0')}`;
-            };
-
-            const setMinutes = (mins) => {
-                const s = mins * 60;
-                setSecondsLeft(s);
-                setInitialSeconds(s);
-                setRunning(false);
-            };
-
-            // Warning at <60s, danger at <15s
-            let className = 'countdown-display';
-            if (secondsLeft < 60 && secondsLeft > 15) className += ' warning';
-            else if (secondsLeft <= 15 && secondsLeft > 0) className += ' danger';
-
-            return (
-                <div className="countdown-block" style={{ background: `linear-gradient(135deg, ${props.color || '#11233B'}, ${props.color || '#11233B'}dd)` }}>
-                    <div className={className}>{format(secondsLeft)}</div>
-                    <div className="countdown-label">{props.title || 'Countdown'}</div>
-
-                    <div className="countdown-controls">
-                        <button className="primary" onClick={() => setRunning(!running)}>
-                            <i className={`fas ${running ? 'fa-pause' : 'fa-play'}`}></i> {running ? 'Pause' : 'Start'}
-                        </button>
-                        <button onClick={() => { setRunning(false); setSecondsLeft(initialSeconds); }}>
-                            <i className="fas fa-redo"></i> Reset
-                        </button>
-                        <button onClick={() => setMinutes(1)}>1m</button>
-                        <button onClick={() => setMinutes(3)}>3m</button>
-                        <button onClick={() => setMinutes(5)}>5m</button>
-                        <button onClick={() => setMinutes(10)}>10m</button>
-                    </div>
-                </div>
-            );
-        };
-
         function renderBlock(item, audioCtx, media) {
             const { type, props } = item;
             switch (type) {
@@ -765,7 +721,6 @@
                 case 'CustomUploads': return <CustomUploadsBlock key={item.id} props={props} />;
                 case 'SlidesManager': return <SlidesManagerBlock key={item.id} props={props} />;
                 case 'Divider': return <DividerBlock key={item.id} props={props} />;
-                case 'Countdown': return <CountdownBlock key={item.id} props={props} />;
                 default: return null;
             }
         }
@@ -776,9 +731,9 @@
         const FloatingAudioPlayer = ({ audioCtx, visible }) => {
             if (!visible) return null;
 
-            const trackName = audioCtx.audioUrl
+            const trackName = audioCtx.trackName || (audioCtx.audioUrl
                 ? decodeURIComponent(audioCtx.audioUrl.split('/').pop().split('?')[0]).replace(/\.[^.]+$/, '')
-                : 'Ready';
+                : 'Ready');
 
             const formatTime = (s) => {
                 if (!s || isNaN(s)) return '0:00';
@@ -879,25 +834,28 @@
                             />
                         </div>
 
-                        {/* Stop button */}
-                        <button
-                            onClick={() => audioCtx.stopAll()}
-                            disabled={!audioCtx.audioUrl}
-                            title="Pause (keeps position)"
-                            style={{
-                                padding: '8px 14px',
-                                background: 'rgba(255,255,255,0.1)',
-                                border: '1px solid rgba(255,255,255,0.15)',
-                                borderRadius: 8,
-                                color: '#fff',
-                                cursor: audioCtx.audioUrl ? 'pointer' : 'not-allowed',
-                                fontSize: 12,
-                                fontWeight: 600,
-                                flexShrink: 0,
-                            }}
-                        >
-                            ⏸ Pause
-                        </button>
+                        {/* Fade toggle */}
+                        <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            flexShrink: 0,
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.08)',
+                            borderRadius: 6,
+                            border: '1px solid rgba(255,255,255,0.15)',
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={audioCtx.fadeEnabled}
+                                onChange={(e) => audioCtx.setFadeEnabled(e.target.checked)}
+                                style={{ accentColor: 'var(--color-brand)', cursor: 'pointer' }}
+                            />
+                            <span>Fade</span>
+                        </label>
                     </div>
                 </div>
             );

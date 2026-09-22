@@ -957,74 +957,6 @@ textarea:focus-visible {
 }
 
 /* ================================================================
-   COUNTDOWN TIMER
-   ================================================================ */
-
-.countdown-block {
-  text-align: center;
-  padding: 32px;
-  background: linear-gradient(135deg, #11233B 0%, #1e3a5f 100%);
-  border-radius: var(--radius-lg);
-  color: #fff;
-  margin-bottom: 24px;
-}
-
-.countdown-display {
-  font-size: 96px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  margin-bottom: 16px;
-  transition: color 200ms;
-}
-
-.countdown-display.warning { color: #F59E0B; }
-.countdown-display.danger { color: #EF4444; }
-
-.countdown-label {
-  font-size: 14px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  opacity: 0.7;
-  margin-bottom: 24px;
-}
-
-.countdown-controls {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.countdown-controls button {
-  padding: 10px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  border-radius: 999px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 150ms;
-}
-
-.countdown-controls button:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.countdown-controls button.primary {
-  background: var(--color-brand);
-  border-color: var(--color-brand);
-}
-
-.countdown-controls button.primary:hover {
-  background: var(--color-brand-dark);
-}
-
-/* ================================================================
    AUDIO PLAYLIST (viewer version)
    ================================================================ */
 
@@ -1122,6 +1054,5 @@ textarea:focus-visible {
   .presenter-name { font-size: 22px; }
   .presenter-content { padding: 20px; }
   .presenter-tabs { padding: 0 20px; gap: 20px; }
-  .countdown-display { font-size: 64px; }
   .fullscreen-toggle { top: 8px; right: 8px; padding: 8px 12px; font-size: 12px; }
 }
