@@ -225,57 +225,127 @@
 
     <script>
         // ================================================================
+        // CONFIG
+        // ================================================================
+        const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
+        const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
+
+        // ================================================================
         // STATE
         // ================================================================
         let session = null;
         let user = null;
         let sites = [];
 
-        try {
-            const s = localStorage.getItem('podiumSession');
-            if (s) session = JSON.parse(s);
-            const u = localStorage.getItem('podiumUser');
-            if (u) user = JSON.parse(u);
-        } catch (e) {}
-
+        // ================================================================
+        // DOM REFS
+        // ================================================================
         const authScreen = document.getElementById('authScreen');
         const dashboardContent = document.getElementById('dashboardContent');
 
+        // ================================================================
+        // UI HELPERS
+        // ================================================================
         function showAuth() {
             authScreen.style.display = 'flex';
             dashboardContent.style.display = 'none';
         }
+
         function showDashboard() {
             authScreen.style.display = 'none';
             dashboardContent.style.display = 'block';
-            if (user?.email) document.getElementById('userEmail').textContent = user.email;
+        }
+
+        function showLoading(message) {
+            if (message === undefined) message = 'Loading your sites...';
+            authScreen.style.display = 'none';
+            dashboardContent.style.display = 'none';
+            let loader = document.getElementById('globalLoader');
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'globalLoader';
+                loader.setAttribute('style', 'position:fixed;inset:0;z-index:9998;background:linear-gradient(135deg,#F8F9FA 0%,#E6F7FA 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;');
+                document.body.appendChild(loader);
+            }
+            loader.style.display = 'flex';
+            loader.innerHTML = '';
+            const spin = document.createElement('div');
+            spin.setAttribute('style', 'width:48px;height:48px;border:3px solid #E5E7EB;border-top-color:#0090A8;border-radius:50%;animation:dashspin 0.8s linear infinite;');
+            const lbl = document.createElement('div');
+            lbl.setAttribute('style', 'font-family:inherit;font-size:14px;font-weight:600;color:#6B7280;');
+            lbl.textContent = message;
+            const st = document.createElement('style');
+            st.textContent = '@keyframes dashspin { to { transform: rotate(360deg); } }';
+            loader.appendChild(spin);
+            loader.appendChild(lbl);
+            loader.appendChild(st);
+        }
+
+        function hideLoading() {
+            const loader = document.getElementById('globalLoader');
+            if (loader) loader.style.display = 'none';
+        }
+
+        // ================================================================
+        // SESSION HELPERS
+        // ================================================================
+        function readSession() {
+            try {
+                const raw = localStorage.getItem('podiumSession');
+                if (!raw) return null;
+                const s = JSON.parse(raw);
+                if (!s || !s.access_token) return null;
+                return s;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function readUser() {
+            try {
+                const raw = localStorage.getItem('podiumUser');
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function logout(redirect) {
+            if (redirect === undefined) redirect = false;
+            localStorage.removeItem('podiumSession');
+            localStorage.removeItem('podiumUser');
+            session = null;
+            user = null;
+            sites = [];
+            if (redirect) location.reload();
+            else showAuth();
         }
 
         // ================================================================
         // API HELPER
         // ================================================================
-        async function apiFetch(endpoint, options = {}) {
-            const headers = { 'Content-Type': 'application/json', ...options.headers };
-            if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
-
-            const resp = await fetch(endpoint, { ...options, headers });
-
-            // Check content type before parsing
-            const contentType = resp.headers.get('content-type') || '';
-            if (!contentType.includes('application/json')) {
-                throw new Error('Server returned non-JSON response. Status: ' + resp.status);
-            }
-
-            const data = await resp.json();
-
+        async function apiFetch(endpoint, options) {
+            options = options || {};
+            const headers = { 'Content-Type': 'application/json' };
+            const optHeaders = options.headers || {};
+            for (const k in optHeaders) headers[k] = optHeaders[k];
+            if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+            const fetchOpts = {};
+            for (const k in options) { if (k !== 'headers') fetchOpts[k] = options[k]; }
+            fetchOpts.headers = headers;
+            fetchOpts.cache = 'no-store';
+            const resp = await fetch(endpoint, fetchOpts);
             if (resp.status === 401) {
-                localStorage.removeItem('podiumSession');
-                localStorage.removeItem('podiumUser');
-                session = null; user = null;
-                showAuth();
-                throw new Error('Session expired. Please log in again.');
+                const err = new Error('Session expired');
+                err.status = 401;
+                throw err;
             }
-            if (!resp.ok) throw new Error(data.error || 'API error');
+            const ct = resp.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') === -1) {
+                throw new Error('Server returned non-JSON (' + resp.status + ')');
+            }
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || ('Request failed (' + resp.status + ')'));
             return data;
         }
 
@@ -303,42 +373,49 @@
         // ================================================================
         // LOGIN
         // ================================================================
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPassword').value;
+        async function performLogin(email, password) {
             const errEl = document.getElementById('loginError');
             errEl.style.display = 'none';
-
-            if (!email || !password) {
-                errEl.textContent = 'Please enter email and password';
-                errEl.style.display = 'block';
-                return;
-            }
-
             try {
                 const resp = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
+                    body: JSON.stringify({ email: email, password: password }),
                 });
                 const data = await resp.json();
-
                 if (!resp.ok) {
                     errEl.textContent = data.error || 'Login failed';
                     errEl.style.display = 'block';
-                    return;
+                    return false;
                 }
-
+                localStorage.setItem('podiumSession', JSON.stringify(data.session));
+                localStorage.setItem('podiumUser', JSON.stringify(data.user));
                 session = data.session;
                 user = data.user;
-                localStorage.setItem('podiumSession', JSON.stringify(session));
-                localStorage.setItem('podiumUser', JSON.stringify(user));
-
-                showDashboard();
-                await loadSites();
+                return true;
             } catch (e) {
                 errEl.textContent = 'Network error: ' + e.message;
                 errEl.style.display = 'block';
+                return false;
+            }
+        }
+
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            if (!email || !password) {
+                const errEl = document.getElementById('loginError');
+                errEl.textContent = 'Please enter email and password';
+                errEl.style.display = 'block';
+                return;
+            }
+            showLoading('Signing you in...');
+            const ok = await performLogin(email, password);
+            if (ok) {
+                await loadSitesAndShow();
+            } else {
+                hideLoading();
+                showAuth();
             }
         });
 
@@ -394,12 +471,19 @@
                     user = data.user;
                     localStorage.setItem('podiumSession', JSON.stringify(session));
                     localStorage.setItem('podiumUser', JSON.stringify(user));
-                    sucEl.textContent = '✅ Account created! Logging you in…';
+                    sucEl.textContent = 'Account created! Logging you in...';
                     sucEl.style.display = 'block';
-                    setTimeout(() => { showDashboard(); loadSites(); }, 800);
+                    showLoading('Setting up your account...');
+                    setTimeout(async () => {
+                        await loadSitesAndShow();
+                    }, 500);
                 } else {
-                    sucEl.textContent = data.message || '✅ Check your email to confirm your account.';
+                    sucEl.textContent = data.message || 'Check your email to confirm your account.';
                     sucEl.style.display = 'block';
+                    setTimeout(() => {
+                        tabLogin.click();
+                        document.getElementById('loginEmail').value = email;
+                    }, 2000);
                 }
             } catch (e) {
                 errEl.textContent = 'Network error: ' + e.message;
@@ -412,71 +496,48 @@
         });
 
         // ================================================================
-        // LOGOUT HELPER
+        // LOGOUT
         // ================================================================
-        function logout() {
-            localStorage.removeItem('podiumSession');
-            localStorage.removeItem('podiumUser');
-            session = null;
-            user = null;
-            sites = [];
-            showAuth();
-        }
-
         document.getElementById('logoutBtn').addEventListener('click', () => {
-            logout();
-            location.reload();
+            logout(true);
         });
 
         // ================================================================
-        // SITES
+        // SITES — CORE LOGIC
         // ================================================================
+
+        // Loads sites from server. Throws on error.
         async function loadSites() {
+            console.log('Loading sites...');
+            const data = await apiFetch('/api/sites');
+            console.log('Sites loaded:', data);
+            sites = Array.isArray(data) ? data : [];
+            renderSites();
+        }
+
+        // Load sites then show dashboard — the SAFE way
+        async function loadSitesAndShow() {
+            showLoading('Loading your sites...');
             try {
-                console.log('🔄 Loading sites...');
-                const resp = await fetch('/api/sites', {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + (session?.access_token || ''),
-                    },
-                });
-                console.log('📥 Response status:', resp.status);
-
-                const contentType = resp.headers.get('content-type') || '';
-                if (!contentType.includes('application/json')) {
-                    const text = await resp.text();
-                    console.error('❌ Non-JSON response:', text.substring(0, 200));
-                    sites = [];
-                    renderSites();
-                    return;
+                await loadSites();
+                hideLoading();
+                showDashboard();
+                // Update user email in UI
+                if (user && user.email) {
+                    const emailEl = document.getElementById('userEmail');
+                    if (emailEl) emailEl.textContent = user.email;
                 }
-
-                const data = await resp.json();
-                console.log('📥 Response body:', data);
-
-                if (resp.status === 401) {
-                    console.warn('⚠️ Session expired');
-                    localStorage.removeItem('podiumSession');
-                    localStorage.removeItem('podiumUser');
-                    session = null; user = null;
-                    showAuth();
-                    return;
-                }
-
-                if (!resp.ok) {
-                    console.error('❌ Load error:', data);
-                    sites = [];
-                    renderSites();
-                    return;
-                }
-
-                sites = Array.isArray(data) ? data : [];
-                console.log('✅ Loaded', sites.length, 'sites');
-                renderSites();
             } catch (e) {
-                console.error('❌ Load sites failed:', e);
-                sites = [];
-                renderSites();
+                console.error('Failed to load sites:', e);
+                hideLoading();
+                logout();
+                const errEl = document.getElementById('loginError');
+                if (e && e.status === 401) {
+                    errEl.textContent = 'Your session expired. Please log in again.';
+                } else {
+                    errEl.textContent = 'Could not load sites: ' + e.message;
+                }
+                errEl.style.display = 'block';
             }
         }
 
@@ -505,7 +566,7 @@
                         <i class="fas fa-file-alt" style="font-size:40px;"></i>
                     </div>
                     <div class="project-body">
-                        <div class="project-title">${site.name}</div>
+                        <div class="project-title">${escapeHtml(site.name)}</div>
                         <div class="project-meta">
                             <i class="fas fa-clock"></i>
                             Updated ${new Date(site.updated_at).toLocaleDateString()}
@@ -543,13 +604,20 @@
                     if (!confirm('Delete this site?')) return;
                     try {
                         await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
-                        await loadSites();
+                        sites = sites.filter(s => s.id !== id);
+                        renderSites();
                     } catch (err) {
                         alert('Delete failed: ' + err.message);
                     }
                 });
                 renderThumbnail(id);
             });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return str.replace(/[&<>"']/g, c => map[c]);
         }
 
         async function renderThumbnail(siteId) {
@@ -562,7 +630,7 @@
                 el.innerHTML = `
                     <div style="width:100%;height:100%;background:${d.bgColor || '#F8F9FA'};display:flex;flex-direction:column;align-items:center;padding:12px;gap:6px;overflow:hidden;">
                         ${d.logoUrl ? `<img src="${d.logoUrl}" style="max-height:24px;max-width:80%;object-fit:contain;" />` : ''}
-                        <div style="font-weight:700;color:#11233B;font-size:11px;text-align:center;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${site.name}</div>
+                        <div style="font-weight:700;color:#11233B;font-size:11px;text-align:center;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(site.name)}</div>
                         <div style="width:85%;height:60%;background:#fff;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:3px;padding:6px;overflow:hidden;">
                             ${(d.components || []).slice(0, 4).map(c => {
                                 if (c.type === 'SoundButton') return `<div style="background:#11233B;height:8px;border-radius:4px;"></div>`;
@@ -582,46 +650,13 @@
         // ================================================================
         async function createNewSite() {
             try {
-                console.log('🔄 Creating new site...');
-                const resp = await fetch('/api/sites', {
+                const site = await apiFetch('/api/sites', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + (session?.access_token || ''),
-                    },
                     body: JSON.stringify({ name: 'Untitled Site' }),
                 });
-                console.log('📥 Response status:', resp.status);
-
-                const contentType = resp.headers.get('content-type') || '';
-                if (!contentType.includes('application/json')) {
-                    const text = await resp.text();
-                    console.error('❌ Non-JSON response:', text.substring(0, 200));
-                    alert('Server error. Check console for details.');
-                    return;
-                }
-
-                const data = await resp.json();
-                console.log('📥 Response body:', data);
-
-                if (resp.status === 401) {
-                    alert('Session expired. Please log in again.');
-                    localStorage.removeItem('podiumSession');
-                    localStorage.removeItem('podiumUser');
-                    window.location.reload();
-                    return;
-                }
-
-                if (!resp.ok) {
-                    alert('Failed to create site: ' + (data.error || 'Unknown error'));
-                    return;
-                }
-
-                console.log('✅ Site created:', data.id);
-                window.location.href = `builder.html?site=${data.id}`;
+                window.location.href = `builder.html?site=${site.id}`;
             } catch (e) {
-                console.error('❌ Create site failed:', e);
-                alert('Network error: ' + e.message);
+                alert('Failed to create site: ' + e.message);
             }
         }
 
@@ -630,53 +665,43 @@
         document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
 
         // ================================================================
-        // BOOT — clean, robust sequence
+        // BOOT — bulletproof auto-login
         // ================================================================
         (async function boot() {
-            showAuth();
-
-            // Read session fresh from localStorage (don't trust cached variable)
-            let sess = null;
-            let cachedUser = null;
-            try {
-                const raw = localStorage.getItem('podiumSession');
-                sess = raw ? JSON.parse(raw) : null;
-                const rawUser = localStorage.getItem('podiumUser');
-                cachedUser = rawUser ? JSON.parse(rawUser) : null;
-            } catch (e) {
-                logout();
+            console.log('Boot starting...');
+            // Hide both screens initially and show loading
+            showLoading('Checking session...');
+            const sess = readSession();
+            const cachedUser = readUser();
+            if (!sess || !sess.access_token) {
+                console.log('No session found — showing login');
+                hideLoading();
+                showAuth();
                 return;
             }
-
-            if (!sess?.access_token) {
-                // No session — stay on login
-                return;
-            }
-
-            // Set globals so they're available everywhere
+            console.log('Session found — verifying...');
             session = sess;
             user = cachedUser;
-
             try {
-                // ---- Step 1: Verify token ----
+                // Step 1: Verify token
                 const verifyResp = await fetch('/api/verify', {
                     headers: { 'Authorization': 'Bearer ' + sess.access_token },
                     cache: 'no-store',
                 });
-
                 if (!verifyResp.ok) {
-                    console.warn('Token invalid — logging out');
+                    console.log('Token invalid — logging out');
                     logout();
+                    hideLoading();
                     return;
                 }
-
                 const verifyData = await verifyResp.json();
                 if (verifyData.user) {
                     user = verifyData.user;
                     localStorage.setItem('podiumUser', JSON.stringify(user));
                 }
-
-                // ---- Step 2: Fetch sites ----
+                console.log('Token verified');
+                // Step 2: Load sites
+                console.log('Fetching sites...');
                 const sitesResp = await fetch('/api/sites', {
                     headers: {
                         'Content-Type': 'application/json',
@@ -684,38 +709,41 @@
                     },
                     cache: 'no-store',
                 });
-
                 if (sitesResp.status === 401) {
-                    console.warn('Session expired — logging out');
+                    console.log('Session expired — logging out');
                     logout();
+                    hideLoading();
                     return;
                 }
-
                 if (!sitesResp.ok) {
-                    throw new Error('Failed to load sites: ' + sitesResp.status);
+                    throw new Error('Sites fetch failed: ' + sitesResp.status);
                 }
-
-                const contentType = sitesResp.headers.get('content-type') || '';
-                if (!contentType.includes('application/json')) {
+                const ct = sitesResp.headers.get('content-type') || '';
+                if (ct.indexOf('application/json') === -1) {
                     throw new Error('Server returned non-JSON');
                 }
-
                 const data = await sitesResp.json();
                 sites = Array.isArray(data) ? data : [];
-
-                // ---- Step 3: Show dashboard ----
-                showDashboard();
-                renderSites();
-
-                // ---- Step 4: Also update user email display ----
-                if (user?.email) {
+                console.log('Loaded ' + sites.length + ' sites');
+                // Step 3: Only NOW show the dashboard
+                if (user && user.email) {
                     const emailEl = document.getElementById('userEmail');
                     if (emailEl) emailEl.textContent = user.email;
                 }
+                hideLoading();
+                showDashboard();
+                renderSites();
+                console.log('Boot complete');
             } catch (e) {
                 console.error('Boot error:', e);
-                // On any unexpected error, log out so user can retry
                 logout();
+                hideLoading();
+                // Show login with a message
+                const errEl = document.getElementById('loginError');
+                if (errEl) {
+                    errEl.textContent = 'Session error: ' + e.message + '. Please log in again.';
+                    errEl.style.display = 'block';
+                }
             }
         })();
     </script>
