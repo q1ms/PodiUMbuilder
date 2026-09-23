@@ -41,6 +41,7 @@
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
             const fadeDurationRef = useRef(fadeDuration);
+            const loadingTimeoutRef = useRef(null);
 
             // Keep fadeDuration fresh
             useEffect(() => {
@@ -62,16 +63,39 @@
                     setEndedCounter(c => c + 1);  // ← signals a track naturally ended
                 };
                 const handlePlaying = () => {
+                    if (loadingTimeoutRef.current) {
+                        clearTimeout(loadingTimeoutRef.current);
+                        loadingTimeoutRef.current = null;
+                    }
                     setIsLoading(false);
                     setIsPlaying(true);
                 };
-                const handleWaiting = () => setIsLoading(true);
-                const handleLoadStart = () => setIsLoading(true);
+                const handleWaiting = () => {
+                    // Only set loading if we're actually trying to play
+                    const audio = audioRef.current;
+                    if (audio && !audio.paused) {
+                        setIsLoading(true);
+                    }
+                };
+                const handleLoadStart = () => {
+                    // Only set loading if we're playing
+                    const audio = audioRef.current;
+                    if (audio && !audio.paused) {
+                        setIsLoading(true);
+                    }
+                };
                 const handleError = () => {
+                    if (loadingTimeoutRef.current) {
+                        clearTimeout(loadingTimeoutRef.current);
+                        loadingTimeoutRef.current = null;
+                    }
                     setIsLoading(false);
                     setIsPlaying(false);
                 };
-                const handleCanPlay = () => setIsLoading(false);
+                const handleCanPlay = () => {
+                    // Don't clear here — wait for `playing` event
+                    // This prevents the toast from flashing off too early
+                };
 
                 audio.addEventListener('timeupdate', handleTimeUpdate);
                 audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -132,7 +156,16 @@
                 if (!audio) return;
                 const fade = fadeDurationRef.current;
 
-                setIsLoading(true);  // ← start loading spinner
+                // Clear any pending safety timeout
+                if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+
+                setIsLoading(true);
+
+                // Safety: if loading takes >15s, give up
+                loadingTimeoutRef.current = setTimeout(() => {
+                    console.warn('Loading timed out after 15s');
+                    setIsLoading(false);
+                }, 15000);
 
                 // Set the display name
                 if (displayName) setTrackName(displayName);
@@ -140,6 +173,14 @@
                 const currentSrc = audio.src ? audio.src.split('?')[0] : '';
                 const targetSrc = url.split('?')[0];
                 const isSameTrack = currentSrc === targetSrc;
+
+                const onReady = () => {
+                    if (loadingTimeoutRef.current) {
+                        clearTimeout(loadingTimeoutRef.current);
+                        loadingTimeoutRef.current = null;
+                    }
+                    setIsLoading(false);
+                };
 
                 if (!audio.paused && audio.src && !isSameTrack) {
                     // Crossfade to a new track
@@ -151,8 +192,8 @@
                         audio.volume = 0;
                         audio.play().then(() => {
                             setIsPlaying(true);
-                            fadeTo(volume, fade);   // fade in (also clears loading via the 'playing' event)
-                        }).catch(() => setIsLoading(false));
+                            fadeTo(volume, fade);
+                        }).catch(() => onReady());
                         setAudioUrl(url);
                     });
                 } else {
@@ -165,8 +206,8 @@
                     audio.volume = 0;
                     audio.play().then(() => {
                         setIsPlaying(true);
-                        fadeTo(volume, fade);   // fade in (also clears loading via the 'playing' event)
-                    }).catch(() => setIsLoading(false));
+                        fadeTo(volume, fade);
+                    }).catch(() => onReady());
                     setAudioUrl(url);
                 }
             };
@@ -185,6 +226,12 @@
             const pause = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
+                // Clear loading immediately
+                if (loadingTimeoutRef.current) {
+                    clearTimeout(loadingTimeoutRef.current);
+                    loadingTimeoutRef.current = null;
+                }
+                setIsLoading(false);
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     setIsPlaying(false);
@@ -194,6 +241,11 @@
             const stopAll = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
+                if (loadingTimeoutRef.current) {
+                    clearTimeout(loadingTimeoutRef.current);
+                    loadingTimeoutRef.current = null;
+                }
+                setIsLoading(false);
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     setIsPlaying(false);
@@ -203,11 +255,15 @@
             const resetAll = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
+                if (loadingTimeoutRef.current) {
+                    clearTimeout(loadingTimeoutRef.current);
+                    loadingTimeoutRef.current = null;
+                }
+                setIsLoading(false);
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     audio.currentTime = 0;
                     setIsPlaying(false);
-                    setIsLoading(false);  // ← add
                     setProgress(0);
                     setAudioUrl(null);
                     setTrackName('');
@@ -278,19 +334,43 @@
             const isThisPlaying = audioCtx.audioUrl === props.audioUrl && audioCtx.isPlaying;
 
             return (
-                <div className="mb-4">
+                <div style={{ marginBottom: 20 }}>
                     <button
                         onClick={() => {
                             if (props.audioUrl) {
-                                audioCtx.togglePlay(props.audioUrl, buttonLabel);  // ← pass label
+                                audioCtx.togglePlay(props.audioUrl, buttonLabel);
                             } else {
                                 audioCtx.playBeep();
                             }
                         }}
-                        style={{ background: props.color || '#1a1a2e' }}
-                        className="w-full rounded-full hover:opacity-90 text-white text-base font-bold py-5 transition-all shadow-lg flex items-center justify-center gap-3"
+                        style={{
+                            background: `linear-gradient(135deg, ${props.color || '#11233B'} 0%, ${props.color || '#11233B'}dd 100%)`,
+                            width: '100%',
+                            padding: '22px 24px',
+                            borderRadius: 16,
+                            border: 'none',
+                            color: '#fff',
+                            fontFamily: 'inherit',
+                            fontSize: 16,
+                            fontWeight: 700,
+                            letterSpacing: '-0.01em',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 12,
+                            transition: 'all 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                            boxShadow: `0 8px 24px ${props.color || '#11233B'}40, 0 2px 6px rgba(0,0,0,0.1)`,
+                        }}
+                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)'; }}
+                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                     >
-                        <i className={`fas ${isThisPlaying ? 'fa-pause' : 'fa-play'} text-xl`}></i>
+                        {audioCtx.isLoading && audioCtx.audioUrl === props.audioUrl ? (
+                            <i className="fas fa-spinner fa-spin" style={{ fontSize: 18 }}></i>
+                        ) : (
+                            <i className={`fas ${isThisPlaying ? 'fa-pause' : 'fa-play'}`} style={{ fontSize: 18 }}></i>
+                        )}
                         <span>{buttonLabel}</span>
                     </button>
                 </div>
@@ -908,95 +988,99 @@
                 return `${m}:${sec.toString().padStart(2, '0')}`;
             };
 
+            const hasAudio = !!audioCtx.audioUrl;
+            const progressPercent = audioCtx.progress || 0;
+
             return (
-                <div style={{
-                    position: 'fixed',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    zIndex: 9999,
-                    background: 'rgba(17, 35, 59, 0.96)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    borderTop: '1px solid rgba(255,255,255,0.1)',
-                    padding: '12px 20px',
-                    color: '#fff',
-                    boxShadow: '0 -4px 20px rgba(0,0,0,0.2)',
-                }}>
-                    <div style={{
-                        maxWidth: 800,
-                        margin: '0 auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 16,
-                    }}>
-                        {/* Track name */}
-                        <div style={{ flex: '0 0 auto', maxWidth: 200, minWidth: 100 }}>
-                            <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>
-                                {audioCtx.isPlaying ? '● Playing' : 'Idle'}
+                <div
+                    style={{
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 9999,
+                        background: 'rgba(17, 35, 59, 0.98)',
+                        backdropFilter: 'blur(24px) saturate(180%)',
+                        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                        padding: '14px 24px',
+                        color: '#fff',
+                        boxShadow: '0 -8px 40px rgba(0,0,0,0.25)',
+                        fontFamily: 'inherit',
+                        animation: 'playerSlideUp 400ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    }}
+                >
+                    <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 18 }}>
+                        {/* Thin progress bar at top */}
+                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'rgba(255,255,255,0.06)' }}>
+                            <div style={{ height: '100%', width: progressPercent + '%', background: 'linear-gradient(90deg, #0090A8, #00A3C4)', transition: 'width 200ms linear', borderRadius: '0 2px 2px 0', boxShadow: '0 0 8px rgba(0, 144, 168, 0.6)' }}></div>
+                        </div>
+                        {/* Track info */}
+                        <div style={{ flex: '0 0 auto', maxWidth: 220, minWidth: 120 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', opacity: 0.5, marginBottom: 2, fontWeight: 600 }}>
+                                {audioCtx.isLoading ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', animation: 'pulse 1s ease infinite' }}></span>LOADING</>) : audioCtx.isPlaying ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981', animation: 'pulse 1.5s ease infinite' }}></span>NOW PLAYING</>) : (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.3)' }}></span>READY</>)}
                             </div>
-                            <div style={{
-                                fontSize: 13,
-                                fontWeight: 600,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                            }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                                 {trackName}
                             </div>
                         </div>
 
-                        {/* Play/Pause */}
+                        {/* Play/Pause button */}
                         <button
-                            onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl)}
-                            disabled={!audioCtx.audioUrl}
+                            onClick={() => audioCtx.audioUrl && audioCtx.togglePlay(audioCtx.audioUrl, audioCtx.trackName)}
+                            disabled={!hasAudio}
                             style={{
-                                width: 44,
-                                height: 44,
+                                width: 52,
+                                height: 52,
                                 borderRadius: '50%',
-                                background: audioCtx.audioUrl ? 'var(--color-brand)' : 'rgba(255,255,255,0.1)',
+                                background: hasAudio ? 'linear-gradient(135deg, #0090A8, #00A3C4)' : 'rgba(255,255,255,0.08)',
                                 border: 'none',
                                 color: '#fff',
-                                cursor: audioCtx.audioUrl ? 'pointer' : 'not-allowed',
+                                cursor: hasAudio ? 'pointer' : 'not-allowed',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 flexShrink: 0,
-                                fontSize: 14,
+                                fontSize: 16,
+                                boxShadow: hasAudio ? '0 4px 20px rgba(0, 144, 168, 0.4)' : 'none',
+                                transition: 'all 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
                             }}
+                            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.94)'; }}
+                            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                         >
-                            <i className={`fas ${audioCtx.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                            {audioCtx.isLoading ? (<i className="fas fa-spinner fa-spin"></i>) : (<i className={`fas ${audioCtx.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>)}
                         </button>
 
-                        {/* Progress */}
-                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                            <span style={{ fontSize: 11, opacity: 0.6, minWidth: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {/* Progress + time */}
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                            <span style={{ fontSize: 12, opacity: 0.5, minWidth: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
                                 {audioCtx.duration ? formatTime((audioCtx.progress / 100) * audioCtx.duration) : '0:00'}
                             </span>
                             <input
                                 type="range"
                                 min="0"
                                 max="100"
-                                value={audioCtx.progress || 0}
+                                value={progressPercent}
                                 onChange={(e) => audioCtx.seek(parseFloat(e.target.value))}
-                                disabled={!audioCtx.audioUrl}
-                                style={{ flex: 1, accentColor: 'var(--color-brand)', cursor: 'pointer' }}
+                                disabled={!hasAudio}
+                                style={{ flex: 1, accentColor: '#0090A8', cursor: hasAudio ? 'pointer' : 'not-allowed' }}
                             />
-                            <span style={{ fontSize: 11, opacity: 0.6, minWidth: 32, fontVariantNumeric: 'tabular-nums' }}>
+                            <span style={{ fontSize: 12, opacity: 0.5, minWidth: 38, fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
                                 {audioCtx.duration ? formatTime(audioCtx.duration) : '0:00'}
                             </span>
                         </div>
 
                         {/* Volume */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
-                            <i className="fas fa-volume-up" style={{ fontSize: 12, opacity: 0.7 }}></i>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto' }}>
+                            <i className={`fas ${audioCtx.volume === 0 ? 'fa-volume-mute' : audioCtx.volume < 0.5 ? 'fa-volume-down' : 'fa-volume-up'}`} style={{ fontSize: 13, opacity: 0.7, cursor: 'pointer' }} onClick={() => audioCtx.changeVolume(audioCtx.volume === 0 ? 100 : 0)}></i>
                             <input
                                 type="range"
                                 min="0"
                                 max="100"
                                 value={audioCtx.volume * 100}
                                 onChange={(e) => audioCtx.changeVolume(parseFloat(e.target.value))}
-                                style={{ width: 80, accentColor: 'var(--color-brand)', cursor: 'pointer' }}
+                                style={{ width: 90, accentColor: '#0090A8', cursor: 'pointer' }}
                             />
                         </div>
 
@@ -1004,23 +1088,26 @@
                         <label style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 6,
+                            gap: 8,
                             fontSize: 12,
                             cursor: 'pointer',
                             userSelect: 'none',
                             flexShrink: 0,
-                            padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.08)',
-                            borderRadius: 6,
-                            border: '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 14px',
+                            background: audioCtx.fadeEnabled ? 'rgba(0, 144, 168, 0.15)' : 'rgba(255,255,255,0.05)',
+                            borderRadius: 10,
+                            border: `1px solid ${audioCtx.fadeEnabled ? 'rgba(0, 144, 168, 0.4)' : 'rgba(255,255,255,0.1)'}`,
+                            transition: 'all 200ms',
+                            fontWeight: 600,
+                            color: audioCtx.fadeEnabled ? '#4FD1C5' : 'rgba(255,255,255,0.6)',
                         }}>
                             <input
                                 type="checkbox"
                                 checked={audioCtx.fadeEnabled}
                                 onChange={(e) => audioCtx.setFadeEnabled(e.target.checked)}
-                                style={{ accentColor: 'var(--color-brand)', cursor: 'pointer' }}
+                                style={{ accentColor: '#0090A8', cursor: 'pointer', width: 14, height: 14 }}
                             />
-                            <span>Fade</span>
+                            Fade
                         </label>
                     </div>
                 </div>
@@ -1034,71 +1121,145 @@
             const [visible, setVisible] = useState(false);
             const [message, setMessage] = useState('');
             const [kind, setKind] = useState('loading');
-            const prevLoading = useRef(false);
-            const prevPlaying = useRef(false);
             const hideTimerRef = useRef(null);
+            const prevLoadingRef = useRef(false);
+            const prevPlayingRef = useRef(false);
+            const prevUrlRef = useRef(null);
 
-            useEffect(() => {
+            const clearHideTimer = () => {
                 if (hideTimerRef.current) {
                     clearTimeout(hideTimerRef.current);
                     hideTimerRef.current = null;
                 }
+            };
 
-                // Loading started
-                if (audioCtx.isLoading && !prevLoading.current) {
+            useEffect(() => {
+                const { isLoading, isPlaying, audioUrl, trackName } = audioCtx;
+
+                // ---- PLAYING STARTED ----
+                const playingJustStarted =
+                    !prevPlayingRef.current &&
+                    isPlaying &&
+                    !isLoading &&
+                    audioUrl &&
+                    audioUrl !== prevUrlRef.current;
+
+                if (playingJustStarted) {
+                    clearHideTimer();
+                    setMessage(`Playing: ${trackName || 'Track'}`);
+                    setKind('playing');
+                    setVisible(true);
+                    hideTimerRef.current = setTimeout(() => setVisible(false), 2000);
+                }
+
+                // ---- LOADING STARTED ----
+                const loadingJustStarted = isLoading && !prevLoadingRef.current;
+                if (loadingJustStarted) {
+                    clearHideTimer();
                     setMessage('Loading music…');
                     setKind('loading');
                     setVisible(true);
                 }
 
-                // Loading finished → playing started
-                if (!audioCtx.isLoading && audioCtx.isPlaying && !prevPlaying.current) {
-                    setMessage(`Playing: ${audioCtx.trackName || 'Track'}`);
-                    setKind('playing');
-                    setVisible(true);
-                    hideTimerRef.current = setTimeout(() => setVisible(false), 2500);
+                // ---- LOADING FINISHED (but no play started — e.g. error) ----
+                const loadingJustStopped = !isLoading && prevLoadingRef.current;
+                if (loadingJustStopped && !isPlaying) {
+                    // Only hide if we didn't just switch to playing
+                    if (!playingJustStarted) {
+                        hideTimerRef.current = setTimeout(() => setVisible(false), 500);
+                    }
                 }
 
-                // Playing stopped
-                if (!audioCtx.isPlaying && prevPlaying.current) {
+                // ---- STOPPED PLAYING ----
+                const playingJustStopped = !isPlaying && prevPlayingRef.current;
+                if (playingJustStopped) {
                     hideTimerRef.current = setTimeout(() => setVisible(false), 500);
                 }
 
-                prevLoading.current = audioCtx.isLoading;
-                prevPlaying.current = audioCtx.isPlaying;
-            }, [audioCtx.isLoading, audioCtx.isPlaying, audioCtx.trackName]);
+                // ---- URL CLEARED (reset) ----
+                if (!audioUrl && prevUrlRef.current) {
+                    clearHideTimer();
+                    setVisible(false);
+                }
+
+                // Update refs
+                prevLoadingRef.current = isLoading;
+                prevPlayingRef.current = isPlaying;
+                prevUrlRef.current = audioUrl;
+            }, [audioCtx.isLoading, audioCtx.isPlaying, audioCtx.audioUrl, audioCtx.trackName]);
+
+            useEffect(() => () => clearHideTimer(), []);
 
             if (!visible) return null;
 
-            const styles = {
-                loading: { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', icon: 'fa-spinner fa-spin' },
-                playing: { bg: 'linear-gradient(135deg, #10B981, #059669)', icon: 'fa-play' },
-                error:   { bg: 'linear-gradient(135deg, #EF4444, #DC2626)', icon: 'fa-exclamation-triangle' },
+            const config = {
+                loading: {
+                    bg: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                    icon: 'fa-spinner fa-spin',
+                    shadow: 'rgba(217, 119, 6, 0.4)',
+                },
+                playing: {
+                    bg: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    icon: 'fa-play',
+                    shadow: 'rgba(5, 150, 105, 0.4)',
+                },
+                error: {
+                    bg: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                    icon: 'fa-exclamation-triangle',
+                    shadow: 'rgba(220, 38, 38, 0.4)',
+                },
             };
-            const s = styles[kind];
+
+            const c = config[kind];
 
             return (
-                <div style={{
-                    position: 'fixed',
-                    top: 20,
-                    right: 20,
-                    background: s.bg,
-                    color: '#fff',
-                    padding: '12px 18px',
-                    borderRadius: 12,
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    zIndex: 99999,
-                    animation: 'slideInRight 250ms ease',
-                    backdropFilter: 'blur(10px)',
-                    maxWidth: 320,
-                }}>
-                    <i className={`fas ${s.icon}`} style={{ fontSize: 16 }}></i>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 24,
+                        right: 24,
+                        background: c.bg,
+                        color: '#fff',
+                        padding: '14px 22px',
+                        borderRadius: 16,
+                        boxShadow: `0 12px 40px ${c.shadow}, 0 4px 12px rgba(0,0,0,0.15)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                        fontSize: 15,
+                        fontWeight: 600,
+                        fontFamily: 'inherit',
+                        zIndex: 100000,
+                        animation: 'toastSlideIn 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        maxWidth: 380,
+                        letterSpacing: '-0.01em',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                    }}
+                >
+                    <div
+                        style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: '50%',
+                            background: 'rgba(255,255,255,0.25)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                        }}
+                    >
+                        <i className={`fas ${c.icon}`} style={{ fontSize: 14 }}></i>
+                    </div>
+                    <span
+                        style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                        }}
+                    >
                         {message}
                     </span>
                 </div>
@@ -1197,69 +1358,86 @@
             const activeItems = components.filter(c => c.tab === activeTab);
 
             return (
-                <div style={{ minHeight: '100vh', background: site.bgColor || '#F8F9FA', padding: '32px 16px 100px' }}>
+                <div style={{
+                    minHeight: '100vh',
+                    background: site.bgColor
+                        ? `linear-gradient(135deg, ${site.bgColor} 0%, ${site.bgColor}dd 100%)`
+                        : 'linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%)',
+                    padding: '48px 20px 120px',
+                    fontFamily: 'inherit',
+                }}>
                     <button className="fullscreen-toggle" onClick={toggleFullscreen}>
                         <i className={`fas ${wholeFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
                         {wholeFullscreen ? 'Exit' : 'Fullscreen'}
                     </button>
-                    <div style={{ maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 24, boxShadow: '0 20px 50px rgba(17, 35, 59, 0.12)', overflow: 'hidden' }}>
-                        {/* Header - CENTERED logo + name */}
+                    <div style={{
+                        maxWidth: 800,
+                        margin: '0 auto',
+                        background: '#fff',
+                        borderRadius: 24,
+                        boxShadow: '0 24px 60px rgba(17, 35, 59, 0.08), 0 8px 20px rgba(17, 35, 59, 0.04)',
+                        overflow: 'hidden',
+                        border: '1px solid rgba(17, 35, 59, 0.04)',
+                    }}>
+                        {/* Header */}
                         <div style={{
-                            padding: '32px 40px',
-                            borderBottom: '1px solid #E5E7EB',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: '12px',
-                            textAlign: 'center'
+                            padding: '48px 56px 32px',
+                            textAlign: 'center',
+                            borderBottom: '1px solid #F1F5F9',
+                            background: 'linear-gradient(180deg, #fff 0%, #FAFBFC 100%)',
                         }}>
                             {site.logoUrl && (
                                 <img
                                     src={site.logoUrl}
                                     alt="Logo"
-                                    style={{ maxHeight: 80, width: 'auto', objectFit: 'contain' }}
+                                    style={{ maxHeight: 80, width: 'auto', objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.08))' }}
                                 />
                             )}
-                            <h1 style={{
-                                fontSize: '28px',
-                                fontWeight: 700,
-                                color: '#11233B',
-                                margin: 0,
-                                letterSpacing: '-0.01em'
-                            }}>
+                            <h1 style={{ fontSize: 36, fontWeight: 800, color: '#11233B', margin: 0, letterSpacing: '-0.02em' }}>
                                 {site.name || 'Event'}
                             </h1>
                         </div>
 
                         {/* Tabs */}
                         {tabs.length > 1 && (
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '0 40px', borderBottom: '1px solid #E5E7EB' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: 32, padding: '0 56px', borderBottom: '1px solid #F1F5F9', background: '#fff' }}>
                                 {tabs.map(t => (
                                     <button key={t.id} onClick={() => setActiveTab(t.id)}
                                         style={{
                                             background: 'none', border: 'none', cursor: 'pointer',
-                                            padding: '16px 0', fontFamily: 'inherit',
-                                            fontWeight: 600, fontSize: '14px',
+                                            padding: '18px 0', fontFamily: 'inherit',
+                                            fontWeight: 700, fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase',
                                             color: activeTab === t.id ? '#11233B' : '#9CA3AF',
-                                            borderBottom: activeTab === t.id ? '2px solid #0090A8' : '2px solid transparent',
-                                            transition: 'all 150ms'
+                                            borderBottom: activeTab === t.id ? '3px solid #0090A8' : '3px solid transparent',
+                                            transition: 'all 200ms'
                                         }}>{t.label}</button>
                                 ))}
                             </div>
                         )}
 
                         {/* Content */}
-                        <div style={{ padding: '32px 40px' }}>
+                        <div style={{ padding: '40px 56px' }}>
                             {activeItems.length === 0 ? (
-                                <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '48px 0' }}>
+                                <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '64px 0', fontSize: 14 }}>
+                                    <i className="fas fa-inbox" style={{ fontSize: 48, opacity: 0.3, display: 'block', marginBottom: 16 }}></i>
                                     No content on this page.
                                 </div>
                             ) : activeItems.map(item => renderBlock(item, audioCtx, site.media))}
                         </div>
 
                         {/* Footer */}
-                        <div style={{ padding: '20px 40px', background: '#F8F9FA', textAlign: 'center', fontSize: '12px', color: '#9CA3AF' }}>
-                            Powered by <strong style={{ color: '#0090A8' }}>Podi@UM</strong>
+                        <div style={{
+                            padding: '24px 56px',
+                            background: 'linear-gradient(180deg, #FAFBFC 0%, #F1F5F9 100%)',
+                            textAlign: 'center',
+                            fontSize: 11,
+                            letterSpacing: '0.15em',
+                            textTransform: 'uppercase',
+                            color: '#9CA3AF',
+                            fontWeight: 600,
+                            borderTop: '1px solid #F1F5F9',
+                        }}>
+                            Powered by <span style={{ color: '#0090A8' }}>Podi@UM</span>
                         </div>
                     </div>
 
