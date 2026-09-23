@@ -35,18 +35,39 @@
             const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(1.0);
             const [endedCounter, setEndedCounter] = useState(0);
-            const [trackName, setTrackName] = useState('');       // display name of the current block/track
-            const [fadeEnabled, setFadeEnabled] = useState(true); // global fade on/off
-            const [isLoading, setIsLoading] = useState(false);
+            const [trackName, setTrackName] = useState('');
+            const [fadeEnabled, setFadeEnabled] = useState(true);
+            const [notification, setNotification] = useState(null); // { id, message, kind }
+
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
             const fadeDurationRef = useRef(fadeDuration);
             const loadingTimeoutRef = useRef(null);
+            const notifTimerRef = useRef(null);
 
-            // Keep fadeDuration fresh
             useEffect(() => {
                 fadeDurationRef.current = fadeDuration;
             }, [fadeDuration]);
+
+            // ============================================================
+            // NOTIFICATION HELPER — the ONLY way toast state changes
+            // ============================================================
+            const notify = (message, kind = 'info', autoHideMs = 2000) => {
+                if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+                setNotification({ id: Date.now(), message, kind });
+                if (autoHideMs > 0) {
+                    notifTimerRef.current = setTimeout(() => {
+                        setNotification(null);
+                        notifTimerRef.current = null;
+                    }, autoHideMs);
+                }
+            };
+
+            const clearNotification = () => {
+                if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+                notifTimerRef.current = null;
+                setNotification(null);
+            };
 
             useEffect(() => {
                 const audio = new Audio();
@@ -57,34 +78,17 @@
                     if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
                 };
                 const handleLoadedMetadata = () => setDuration(audio.duration);
-                const handlePlaying = () => {
-                    if (loadingTimeoutRef.current) {
-                        clearTimeout(loadingTimeoutRef.current);
-                        loadingTimeoutRef.current = null;
-                    }
-                    setIsLoading(false);
-                    setIsPlaying(true);
-                };
-
-                const handlePause = () => {
-                    // If we pause for any reason, not loading
-                    setIsLoading(false);
-                };
-
-                const handleError = () => {
-                    if (loadingTimeoutRef.current) {
-                        clearTimeout(loadingTimeoutRef.current);
-                        loadingTimeoutRef.current = null;
-                    }
-                    setIsLoading(false);
-                    setIsPlaying(false);
-                };
-
+                const handlePlaying = () => setIsPlaying(true);
+                const handlePause = () => setIsPlaying(false);
                 const handleEnded = () => {
                     setIsPlaying(false);
-                    setIsLoading(false);
                     setProgress(0);
-                    setEndedCounter(c => c + 1);  // ← signals a track naturally ended
+                    setEndedCounter(c => c + 1);
+                };
+                const handleError = () => {
+                    setIsPlaying(false);
+                    clearNotification();
+                    notify('Could not play audio', 'error', 3000);
                 };
 
                 audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -103,6 +107,8 @@
                     audio.removeEventListener('playing', handlePlaying);
                     audio.removeEventListener('pause', handlePause);
                     audio.removeEventListener('error', handleError);
+                    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+                    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
                 };
             }, []);
 
@@ -136,69 +142,69 @@
                 }, 16);
             };
 
-            // ===== PLAY (always from 0:00) — crossfades when switching while playing =====
+            // ============================================================
+            // PLAY — bulletproof notification flow
+            // ============================================================
             const play = (url, displayName) => {
                 const audio = audioRef.current;
-                if (!audio) return;
+                if (!audio || !url) return;
                 const fade = fadeDurationRef.current;
 
-                // Clear any pending safety timeout
-                if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-
-                setIsLoading(true);
-
-                // Safety: if loading takes >10s, force clear
-                loadingTimeoutRef.current = setTimeout(() => {
-                    console.warn('Loading timeout — clearing');
-                    setIsLoading(false);
-                }, 10000);
-
-                // Set the display name
                 if (displayName) setTrackName(displayName);
+
+                // Immediately show "Loading music…" (only this line writes the toast)
+                notify('Loading music…', 'loading', 0); // autoHideMs=0 means keep visible
+
+                // Safety timeout in case promise never resolves
+                if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+                loadingTimeoutRef.current = setTimeout(() => {
+                    console.warn('Play timeout — forcing state');
+                    notify(`Playing: ${displayName || 'Track'}`, 'playing', 2000);
+                }, 8000);
 
                 const currentSrc = audio.src ? audio.src.split('?')[0] : '';
                 const targetSrc = url.split('?')[0];
                 const isSameTrack = currentSrc === targetSrc;
 
-                const onPlaySuccess = () => {
+                const handlePlaySuccess = () => {
                     if (loadingTimeoutRef.current) {
                         clearTimeout(loadingTimeoutRef.current);
                         loadingTimeoutRef.current = null;
                     }
-                    setIsLoading(false);   // ← KEY FIX: clear here too
                     setIsPlaying(true);
+                    // Replace loading toast with "Playing"
+                    notify(`Playing: ${displayName || 'Track'}`, 'playing', 2000);
                     fadeTo(volume, fade);
                 };
 
-                const onPlayFail = () => {
+                const handlePlayFail = (err) => {
                     if (loadingTimeoutRef.current) {
                         clearTimeout(loadingTimeoutRef.current);
                         loadingTimeoutRef.current = null;
                     }
-                    setIsLoading(false);
+                    console.warn('Play failed:', err);
                     setIsPlaying(false);
+                    clearNotification();
                 };
 
                 if (!audio.paused && audio.src && !isSameTrack) {
-                    // Crossfade to a new track
                     fadeTo(0, fade / 2, () => {
                         audio.pause();
                         audio.src = url;
                         audio.load();
                         audio.currentTime = 0;
                         audio.volume = 0;
-                        audio.play().then(onPlaySuccess).catch(onPlayFail);
+                        audio.play().then(handlePlaySuccess).catch(handlePlayFail);
                         setAudioUrl(url);
                     });
                 } else {
-                    // Fresh play
                     if (!isSameTrack) {
                         audio.src = url;
                         audio.load();
                     }
                     audio.currentTime = 0;
                     audio.volume = 0;
-                    audio.play().then(onPlaySuccess).catch(onPlayFail);
+                    audio.play().then(handlePlaySuccess).catch(handlePlayFail);
                     setAudioUrl(url);
                 }
             };
@@ -210,24 +216,22 @@
                 audio.volume = 0;
                 audio.play()
                     .then(() => {
-                        setIsLoading(false);   // ← clear
                         setIsPlaying(true);
                         fadeTo(volume, fadeDurationRef.current);
                     })
                     .catch(() => {
-                        setIsLoading(false);
+                        setIsPlaying(false);
                     });
             };
 
             const pause = () => {
                 const audio = audioRef.current;
                 if (!audio) return;
-                // Clear loading immediately
                 if (loadingTimeoutRef.current) {
                     clearTimeout(loadingTimeoutRef.current);
                     loadingTimeoutRef.current = null;
                 }
-                setIsLoading(false);
+                clearNotification();  // ← Always clear loading toast on pause
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     setIsPlaying(false);
@@ -241,7 +245,7 @@
                     clearTimeout(loadingTimeoutRef.current);
                     loadingTimeoutRef.current = null;
                 }
-                setIsLoading(false);
+                clearNotification();
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     setIsPlaying(false);
@@ -255,7 +259,7 @@
                     clearTimeout(loadingTimeoutRef.current);
                     loadingTimeoutRef.current = null;
                 }
-                setIsLoading(false);
+                clearNotification();
                 fadeTo(0, fadeDurationRef.current / 2, () => {
                     audio.pause();
                     audio.currentTime = 0;
@@ -304,11 +308,12 @@
 
             return (
                 <AudioContext.Provider value={{
-                    audioUrl, isPlaying, progress, duration, volume, isLoading,
+                    audioUrl, isPlaying, progress, duration, volume,
                     trackName, setTrackName,
                     fadeEnabled, setFadeEnabled,
                     play, resume, pause, stopAll, resetAll,
                     togglePlay, seek, changeVolume, playBeep, endedCounter,
+                    notification,
                 }}>
                     {children}
                 </AudioContext.Provider>
@@ -362,7 +367,7 @@
                         onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                     >
-                        {audioCtx.isLoading && audioCtx.audioUrl === props.audioUrl ? (
+                        {audioCtx.notification && audioCtx.notification.kind === 'loading' && audioCtx.notification.message === 'Loading music…' && audioCtx.audioUrl === props.audioUrl ? (
                             <i className="fas fa-spinner fa-spin" style={{ fontSize: 18 }}></i>
                         ) : (
                             <i className={`fas ${isThisPlaying ? 'fa-pause' : 'fa-play'}`} style={{ fontSize: 18 }}></i>
@@ -1014,7 +1019,7 @@
                         {/* Track info */}
                         <div style={{ flex: '0 0 auto', maxWidth: 220, minWidth: 120 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', opacity: 0.5, marginBottom: 2, fontWeight: 600 }}>
-                                {audioCtx.isLoading ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', animation: 'pulse 1s ease infinite' }}></span>LOADING</>) : audioCtx.isPlaying ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981', animation: 'pulse 1.5s ease infinite' }}></span>NOW PLAYING</>) : (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.3)' }}></span>READY</>)}
+                                {audioCtx.notification && audioCtx.notification.kind === 'loading' ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', animation: 'pulse 1s ease infinite' }}></span>LOADING</>) : audioCtx.isPlaying ? (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981', animation: 'pulse 1.5s ease infinite' }}></span>NOW PLAYING</>) : (<><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.3)' }}></span>READY</>)}
                             </div>
                             <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                                 {trackName}
@@ -1045,7 +1050,7 @@
                             onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                         >
-                            {audioCtx.isLoading ? (<i className="fas fa-spinner fa-spin"></i>) : (<i className={`fas ${audioCtx.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>)}
+                            {audioCtx.notification && audioCtx.notification.kind === 'loading' ? (<i className="fas fa-spinner fa-spin"></i>) : (<i className={`fas ${audioCtx.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>)}
                         </button>
 
                         {/* Progress + time */}
@@ -1114,79 +1119,8 @@
         // LOADING TOAST (top-right notification)
         // ================================================================
         const LoadingToast = ({ audioCtx }) => {
-            const [visible, setVisible] = useState(false);
-            const [message, setMessage] = useState('');
-            const [kind, setKind] = useState('loading');
-            const hideTimerRef = useRef(null);
-            const prevLoadingRef = useRef(false);
-            const prevPlayingRef = useRef(false);
-            const prevUrlRef = useRef(null);
-
-            const clearHideTimer = () => {
-                if (hideTimerRef.current) {
-                    clearTimeout(hideTimerRef.current);
-                    hideTimerRef.current = null;
-                }
-            };
-
-            useEffect(() => {
-                const { isLoading, isPlaying, audioUrl, trackName } = audioCtx;
-
-                // ---- PLAYING STARTED ----
-                const playingJustStarted =
-                    !prevPlayingRef.current &&
-                    isPlaying &&
-                    !isLoading &&
-                    audioUrl &&
-                    audioUrl !== prevUrlRef.current;
-
-                if (playingJustStarted) {
-                    clearHideTimer();
-                    setMessage(`Playing: ${trackName || 'Track'}`);
-                    setKind('playing');
-                    setVisible(true);
-                    hideTimerRef.current = setTimeout(() => setVisible(false), 2000);
-                }
-
-                // ---- LOADING STARTED ----
-                const loadingJustStarted = isLoading && !prevLoadingRef.current;
-                if (loadingJustStarted) {
-                    clearHideTimer();
-                    setMessage('Loading music…');
-                    setKind('loading');
-                    setVisible(true);
-                }
-
-                // ---- LOADING FINISHED (but no play started — e.g. error) ----
-                const loadingJustStopped = !isLoading && prevLoadingRef.current;
-                if (loadingJustStopped && !isPlaying) {
-                    // Only hide if we didn't just switch to playing
-                    if (!playingJustStarted) {
-                        hideTimerRef.current = setTimeout(() => setVisible(false), 500);
-                    }
-                }
-
-                // ---- STOPPED PLAYING ----
-                const playingJustStopped = !isPlaying && prevPlayingRef.current;
-                if (playingJustStopped) {
-                    hideTimerRef.current = setTimeout(() => setVisible(false), 500);
-                }
-
-                // ---- URL CLEARED (reset) ----
-                if (!audioUrl && prevUrlRef.current) {
-                    clearHideTimer();
-                    setVisible(false);
-                }
-
-                // Update refs
-                prevLoadingRef.current = isLoading;
-                prevPlayingRef.current = isPlaying;
-                prevUrlRef.current = audioUrl;
-            }, [audioCtx.isLoading, audioCtx.isPlaying, audioCtx.audioUrl, audioCtx.trackName]);
-
-            useEffect(() => () => clearHideTimer(), []);
-
-            if (!visible) return null;
+            const notif = audioCtx.notification;
+            if (!notif) return null;
 
             const config = {
                 loading: {
@@ -1206,10 +1140,11 @@
                 },
             };
 
-            const c = config[kind];
+            const c = config[notif.kind] || config.playing;
 
             return (
                 <div
+                    key={notif.id}
                     style={{
                         position: 'fixed',
                         top: 24,
@@ -1229,8 +1164,6 @@
                         animation: 'toastSlideIn 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
                         maxWidth: 380,
                         letterSpacing: '-0.01em',
-                        backdropFilter: 'blur(20px)',
-                        WebkitBackdropFilter: 'blur(20px)',
                         border: '1px solid rgba(255,255,255,0.2)',
                     }}
                 >
@@ -1248,15 +1181,8 @@
                     >
                         <i className={`fas ${c.icon}`} style={{ fontSize: 14 }}></i>
                     </div>
-                    <span
-                        style={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            flex: 1,
-                        }}
-                    >
-                        {message}
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {notif.message}
                     </span>
                 </div>
             );
