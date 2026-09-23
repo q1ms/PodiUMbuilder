@@ -412,12 +412,19 @@
         });
 
         // ================================================================
-        // LOGOUT
+        // LOGOUT HELPER
         // ================================================================
-        document.getElementById('logoutBtn').addEventListener('click', () => {
+        function logout() {
             localStorage.removeItem('podiumSession');
             localStorage.removeItem('podiumUser');
-            session = null; user = null;
+            session = null;
+            user = null;
+            sites = [];
+            showAuth();
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            logout();
             location.reload();
         });
 
@@ -623,19 +630,94 @@
         document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
 
         // ================================================================
-        // BOOT
+        // BOOT — clean, robust sequence
         // ================================================================
-        showAuth();
-        if (session?.access_token) {
-            apiFetch('/api/verify')
-                .then(() => { showDashboard(); loadSites(); })
-                .catch(() => {
-                    localStorage.removeItem('podiumSession');
-                    localStorage.removeItem('podiumUser');
-                    session = null; user = null;
-                    showAuth();
+        (async function boot() {
+            showAuth();
+
+            // Read session fresh from localStorage (don't trust cached variable)
+            let sess = null;
+            let cachedUser = null;
+            try {
+                const raw = localStorage.getItem('podiumSession');
+                sess = raw ? JSON.parse(raw) : null;
+                const rawUser = localStorage.getItem('podiumUser');
+                cachedUser = rawUser ? JSON.parse(rawUser) : null;
+            } catch (e) {
+                logout();
+                return;
+            }
+
+            if (!sess?.access_token) {
+                // No session — stay on login
+                return;
+            }
+
+            // Set globals so they're available everywhere
+            session = sess;
+            user = cachedUser;
+
+            try {
+                // ---- Step 1: Verify token ----
+                const verifyResp = await fetch('/api/verify', {
+                    headers: { 'Authorization': 'Bearer ' + sess.access_token },
+                    cache: 'no-store',
                 });
-        }
+
+                if (!verifyResp.ok) {
+                    console.warn('Token invalid — logging out');
+                    logout();
+                    return;
+                }
+
+                const verifyData = await verifyResp.json();
+                if (verifyData.user) {
+                    user = verifyData.user;
+                    localStorage.setItem('podiumUser', JSON.stringify(user));
+                }
+
+                // ---- Step 2: Fetch sites ----
+                const sitesResp = await fetch('/api/sites', {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + sess.access_token,
+                    },
+                    cache: 'no-store',
+                });
+
+                if (sitesResp.status === 401) {
+                    console.warn('Session expired — logging out');
+                    logout();
+                    return;
+                }
+
+                if (!sitesResp.ok) {
+                    throw new Error('Failed to load sites: ' + sitesResp.status);
+                }
+
+                const contentType = sitesResp.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    throw new Error('Server returned non-JSON');
+                }
+
+                const data = await sitesResp.json();
+                sites = Array.isArray(data) ? data : [];
+
+                // ---- Step 3: Show dashboard ----
+                showDashboard();
+                renderSites();
+
+                // ---- Step 4: Also update user email display ----
+                if (user?.email) {
+                    const emailEl = document.getElementById('userEmail');
+                    if (emailEl) emailEl.textContent = user.email;
+                }
+            } catch (e) {
+                console.error('Boot error:', e);
+                // On any unexpected error, log out so user can retry
+                logout();
+            }
+        })();
     </script>
 </body>
 </html>
