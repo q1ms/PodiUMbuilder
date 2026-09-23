@@ -256,29 +256,28 @@
             dashboardContent.style.display = 'block';
         }
 
-        function showLoading(message) {
-            if (message === undefined) message = 'Loading your sites...';
+        function showLoading(message = 'Loading…') {
             authScreen.style.display = 'none';
             dashboardContent.style.display = 'none';
+
             let loader = document.getElementById('globalLoader');
             if (!loader) {
                 loader = document.createElement('div');
                 loader.id = 'globalLoader';
-                loader.setAttribute('style', 'position:fixed;inset:0;z-index:9998;background:linear-gradient(135deg,#F8F9FA 0%,#E6F7FA 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;');
+                loader.style.cssText = `
+                    position: fixed; inset: 0; z-index: 9998;
+                    background: linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%);
+                    display: flex; align-items: center; justify-content: center;
+                    flex-direction: column; gap: 20px;
+                `;
                 document.body.appendChild(loader);
             }
             loader.style.display = 'flex';
-            loader.innerHTML = '';
-            const spin = document.createElement('div');
-            spin.setAttribute('style', 'width:48px;height:48px;border:3px solid #E5E7EB;border-top-color:#0090A8;border-radius:50%;animation:dashspin 0.8s linear infinite;');
-            const lbl = document.createElement('div');
-            lbl.setAttribute('style', 'font-family:inherit;font-size:14px;font-weight:600;color:#6B7280;');
-            lbl.textContent = message;
-            const st = document.createElement('style');
-            st.textContent = '@keyframes dashspin { to { transform: rotate(360deg); } }';
-            loader.appendChild(spin);
-            loader.appendChild(lbl);
-            loader.appendChild(st);
+            loader.innerHTML = `
+                <div style="width:48px;height:48px;border:3px solid #E5E7EB;border-top-color:#0090A8;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+                <div style="font-family:inherit;font-size:14px;font-weight:600;color:#6B7280;">${message}</div>
+                <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+            `;
         }
 
         function hideLoading() {
@@ -294,7 +293,7 @@
                 const raw = localStorage.getItem('podiumSession');
                 if (!raw) return null;
                 const s = JSON.parse(raw);
-                if (!s || !s.access_token) return null;
+                if (!s?.access_token) return null;
                 return s;
             } catch (e) {
                 return null;
@@ -310,8 +309,7 @@
             }
         }
 
-        function logout(redirect) {
-            if (redirect === undefined) redirect = false;
+        function logout(redirect = false) {
             localStorage.removeItem('podiumSession');
             localStorage.removeItem('podiumUser');
             session = null;
@@ -322,30 +320,36 @@
         }
 
         // ================================================================
-        // API HELPER
+        // API HELPER — with cache busting
         // ================================================================
-        async function apiFetch(endpoint, options) {
-            options = options || {};
-            const headers = { 'Content-Type': 'application/json' };
-            const optHeaders = options.headers || {};
-            for (const k in optHeaders) headers[k] = optHeaders[k];
-            if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
-            const fetchOpts = {};
-            for (const k in options) { if (k !== 'headers') fetchOpts[k] = options[k]; }
-            fetchOpts.headers = headers;
-            fetchOpts.cache = 'no-store';
-            const resp = await fetch(endpoint, fetchOpts);
+        async function apiFetch(endpoint, options = {}) {
+            // Add cache-busting param
+            const sep = endpoint.includes('?') ? '&' : '?';
+            const url = endpoint + sep + '_t=' + Date.now();
+
+            const headers = { 'Content-Type': 'application/json', ...options.headers };
+            if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+
+            const resp = await fetch(url, {
+                ...options,
+                headers,
+                cache: 'no-store',
+                credentials: 'omit',
+            });
+
             if (resp.status === 401) {
                 const err = new Error('Session expired');
                 err.status = 401;
                 throw err;
             }
+
             const ct = resp.headers.get('content-type') || '';
-            if (ct.indexOf('application/json') === -1) {
-                throw new Error('Server returned non-JSON (' + resp.status + ')');
+            if (!ct.includes('application/json')) {
+                throw new Error(`Server returned non-JSON (${resp.status})`);
             }
+
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || ('Request failed (' + resp.status + ')'));
+            if (!resp.ok) throw new Error(data.error || `Request failed (${resp.status})`);
             return data;
         }
 
@@ -380,7 +384,7 @@
                 const resp = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, password: password }),
+                    body: JSON.stringify({ email, password }),
                 });
                 const data = await resp.json();
                 if (!resp.ok) {
@@ -409,7 +413,7 @@
                 errEl.style.display = 'block';
                 return;
             }
-            showLoading('Signing you in...');
+            showLoading('Signing you in…');
             const ok = await performLogin(email, password);
             if (ok) {
                 await loadSitesAndShow();
@@ -471,14 +475,13 @@
                     user = data.user;
                     localStorage.setItem('podiumSession', JSON.stringify(session));
                     localStorage.setItem('podiumUser', JSON.stringify(user));
-                    sucEl.textContent = 'Account created! Logging you in...';
+                    sucEl.textContent = '✅ Account created! Logging you in…';
                     sucEl.style.display = 'block';
-                    showLoading('Setting up your account...');
-                    setTimeout(async () => {
-                        await loadSitesAndShow();
-                    }, 500);
+
+                    showLoading('Setting up your account…');
+                    setTimeout(async () => { await loadSitesAndShow(); }, 500);
                 } else {
-                    sucEl.textContent = data.message || 'Check your email to confirm your account.';
+                    sucEl.textContent = data.message || '✅ Check your email to confirm your account.';
                     sucEl.style.display = 'block';
                     setTimeout(() => {
                         tabLogin.click();
@@ -503,46 +506,80 @@
         });
 
         // ================================================================
-        // SITES — CORE LOGIC
+        // SITES — RETRY LOGIC
         // ================================================================
+        async function fetchSites(retries = 2) {
+            for (let attempt = 1; attempt <= retries + 1; attempt++) {
+                try {
+                    console.log(`🔄 Fetching sites (attempt ${attempt})...`);
+                    const data = await apiFetch('/api/sites');
+                    const list = Array.isArray(data) ? data : [];
+                    console.log(`✓ Attempt ${attempt} returned ${list.length} sites`);
 
-        // Loads sites from server. Throws on error.
-        async function loadSites() {
-            console.log('Loading sites...');
-            const data = await apiFetch('/api/sites');
-            console.log('Sites loaded:', data);
-            sites = Array.isArray(data) ? data : [];
-            renderSites();
+                    // If we got sites, great — return
+                    if (list.length > 0) return list;
+
+                    // If empty on first try, wait and retry
+                    if (attempt <= retries) {
+                        console.warn(`⚠️ Empty result on attempt ${attempt}, retrying in 500ms...`);
+                        await new Promise(r => setTimeout(r, 500));
+                    } else {
+                        // Last attempt also empty — accept it
+                        return list;
+                    }
+                } catch (e) {
+                    if (e.status === 401) throw e; // Don't retry on auth error
+                    console.warn(`❌ Attempt ${attempt} failed:`, e.message);
+                    if (attempt > retries) throw e;
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+            return [];
         }
 
-        // Load sites then show dashboard — the SAFE way
         async function loadSitesAndShow() {
-            showLoading('Loading your sites...');
+            showLoading('Loading your sites…');
             try {
-                await loadSites();
-                hideLoading();
-                showDashboard();
-                // Update user email in UI
-                if (user && user.email) {
+                sites = await fetchSites(2);
+                console.log(`✅ Final sites count: ${sites.length}`);
+
+                // Update user email
+                if (user?.email) {
                     const emailEl = document.getElementById('userEmail');
                     if (emailEl) emailEl.textContent = user.email;
                 }
-            } catch (e) {
-                console.error('Failed to load sites:', e);
+
                 hideLoading();
-                logout();
-                const errEl = document.getElementById('loginError');
-                if (e && e.status === 401) {
+                showDashboard();
+
+                // Small delay to ensure DOM is fully rendered before drawing cards
+                setTimeout(() => renderSites(), 50);
+            } catch (e) {
+                console.error('❌ Failed to load sites:', e);
+                hideLoading();
+
+                if (e.status === 401) {
+                    logout();
+                    const errEl = document.getElementById('loginError');
                     errEl.textContent = 'Your session expired. Please log in again.';
+                    errEl.style.display = 'block';
                 } else {
+                    logout();
+                    const errEl = document.getElementById('loginError');
                     errEl.textContent = 'Could not load sites: ' + e.message;
+                    errEl.style.display = 'block';
                 }
-                errEl.style.display = 'block';
             }
         }
 
         function renderSites(search = '') {
             const grid = document.getElementById('projectGrid');
+            if (!grid) {
+                console.error('❌ projectGrid not found in DOM');
+                return;
+            }
+
+            console.log(`🎨 Rendering ${sites.length} sites`);
             let filtered = [...sites];
             if (search.trim()) {
                 const q = search.trim().toLowerCase();
@@ -556,6 +593,9 @@
                         <i class="fas fa-folder-open"></i>
                         <h3 style="font-size:18px;font-weight:600;margin-bottom:8px;color:#11233B;">No sites yet</h3>
                         <p>Click <strong>Create New Site</strong> to get started.</p>
+                        <button onclick="location.reload()" style="margin-top:16px;padding:8px 20px;background:#0090A8;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
+                            🔄 Refresh
+                        </button>
                     </div>`;
                 return;
             }
@@ -616,8 +656,7 @@
 
         function escapeHtml(str) {
             if (!str) return '';
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-            return str.replace(/[&<>"']/g, c => map[c]);
+            return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
         async function renderThumbnail(siteId) {
@@ -635,7 +674,6 @@
                             ${(d.components || []).slice(0, 4).map(c => {
                                 if (c.type === 'SoundButton') return `<div style="background:#11233B;height:8px;border-radius:4px;"></div>`;
                                 if (c.type === 'Playlist') return `<div style="background:#0090A8;height:8px;border-radius:4px;"></div>`;
-                                if (c.type === 'ProgressControls') return `<div style="background:#E5E7EB;height:5px;border-radius:2px;"></div>`;
                                 if (c.type === 'Divider') return `<div style="background:#D1D5DB;height:1px;margin:2px 0;"></div>`;
                                 return `<div style="background:#E5E7EB;height:8px;border-radius:4px;"></div>`;
                             }).join('')}
@@ -665,83 +703,92 @@
         document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
 
         // ================================================================
-        // BOOT — bulletproof auto-login
+        // REFRESH BUTTON — always visible in topbar
+        // ================================================================
+        function addRefreshButton() {
+            const topbar = document.querySelector('#dashboardContent .topbar .container > div:last-child');
+            if (!topbar) return;
+            if (document.getElementById('refreshSitesBtn')) return;
+
+            const btn = document.createElement('button');
+            btn.id = 'refreshSitesBtn';
+            btn.className = 'btn btn-secondary';
+            btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+            btn.style.marginRight = '8px';
+            btn.onclick = () => loadSitesAndShow();
+            topbar.insertBefore(btn, topbar.firstChild);
+        }
+
+        // ================================================================
+        // BOOT — with retry and error handling
         // ================================================================
         (async function boot() {
-            console.log('Boot starting...');
-            // Hide both screens initially and show loading
-            showLoading('Checking session...');
+            console.log('🚀 Boot starting...');
+
+            showLoading('Checking session…');
+            await new Promise(r => setTimeout(r, 100));
+
             const sess = readSession();
             const cachedUser = readUser();
-            if (!sess || !sess.access_token) {
-                console.log('No session found — showing login');
+
+            if (!sess?.access_token) {
+                console.log('❌ No session — showing login');
                 hideLoading();
                 showAuth();
                 return;
             }
-            console.log('Session found — verifying...');
+
+            console.log('✓ Session found');
             session = sess;
             user = cachedUser;
+
             try {
                 // Step 1: Verify token
-                const verifyResp = await fetch('/api/verify', {
+                console.log('🔄 Verifying token...');
+                const verifyResp = await fetch('/api/verify?_t=' + Date.now(), {
                     headers: { 'Authorization': 'Bearer ' + sess.access_token },
                     cache: 'no-store',
                 });
                 if (!verifyResp.ok) {
-                    console.log('Token invalid — logging out');
+                    console.log('❌ Token invalid');
                     logout();
                     hideLoading();
                     return;
                 }
+
                 const verifyData = await verifyResp.json();
                 if (verifyData.user) {
                     user = verifyData.user;
                     localStorage.setItem('podiumUser', JSON.stringify(user));
                 }
-                console.log('Token verified');
-                // Step 2: Load sites
-                console.log('Fetching sites...');
-                const sitesResp = await fetch('/api/sites', {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + sess.access_token,
-                    },
-                    cache: 'no-store',
-                });
-                if (sitesResp.status === 401) {
-                    console.log('Session expired — logging out');
-                    logout();
-                    hideLoading();
-                    return;
-                }
-                if (!sitesResp.ok) {
-                    throw new Error('Sites fetch failed: ' + sitesResp.status);
-                }
-                const ct = sitesResp.headers.get('content-type') || '';
-                if (ct.indexOf('application/json') === -1) {
-                    throw new Error('Server returned non-JSON');
-                }
-                const data = await sitesResp.json();
-                sites = Array.isArray(data) ? data : [];
-                console.log('Loaded ' + sites.length + ' sites');
-                // Step 3: Only NOW show the dashboard
-                if (user && user.email) {
+                console.log('✓ Token verified');
+
+                // Step 2: Load sites with retry
+                sites = await fetchSites(2);
+
+                // Step 3: Show dashboard
+                if (user?.email) {
                     const emailEl = document.getElementById('userEmail');
                     if (emailEl) emailEl.textContent = user.email;
                 }
+
                 hideLoading();
                 showDashboard();
+                addRefreshButton();
+
+                // Wait for DOM update then render
+                await new Promise(r => setTimeout(r, 100));
                 renderSites();
-                console.log('Boot complete');
+
+                console.log('✅ Boot complete — sites:', sites.length);
             } catch (e) {
-                console.error('Boot error:', e);
+                console.error('❌ Boot error:', e);
                 logout();
                 hideLoading();
-                // Show login with a message
+
                 const errEl = document.getElementById('loginError');
                 if (errEl) {
-                    errEl.textContent = 'Session error: ' + e.message + '. Please log in again.';
+                    errEl.textContent = 'Session error: ' + e.message;
                     errEl.style.display = 'block';
                 }
             }
