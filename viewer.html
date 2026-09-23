@@ -37,6 +37,7 @@
             const [endedCounter, setEndedCounter] = useState(0);
             const [trackName, setTrackName] = useState('');       // display name of the current block/track
             const [fadeEnabled, setFadeEnabled] = useState(true); // global fade on/off
+            const [isLoading, setIsLoading] = useState(false);
             const audioRef = useRef(null);
             const fadeIntervalRef = useRef(null);
             const fadeDurationRef = useRef(fadeDuration);
@@ -60,10 +61,26 @@
                     setProgress(0);
                     setEndedCounter(c => c + 1);  // ← signals a track naturally ended
                 };
+                const handlePlaying = () => {
+                    setIsLoading(false);
+                    setIsPlaying(true);
+                };
+                const handleWaiting = () => setIsLoading(true);
+                const handleLoadStart = () => setIsLoading(true);
+                const handleError = () => {
+                    setIsLoading(false);
+                    setIsPlaying(false);
+                };
+                const handleCanPlay = () => setIsLoading(false);
 
                 audio.addEventListener('timeupdate', handleTimeUpdate);
                 audio.addEventListener('loadedmetadata', handleLoadedMetadata);
                 audio.addEventListener('ended', handleEnded);
+                audio.addEventListener('playing', handlePlaying);
+                audio.addEventListener('waiting', handleWaiting);
+                audio.addEventListener('loadstart', handleLoadStart);
+                audio.addEventListener('canplay', handleCanPlay);
+                audio.addEventListener('error', handleError);
 
                 return () => {
                     audio.pause();
@@ -71,6 +88,11 @@
                     audio.removeEventListener('timeupdate', handleTimeUpdate);
                     audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
                     audio.removeEventListener('ended', handleEnded);
+                    audio.removeEventListener('playing', handlePlaying);
+                    audio.removeEventListener('waiting', handleWaiting);
+                    audio.removeEventListener('loadstart', handleLoadStart);
+                    audio.removeEventListener('canplay', handleCanPlay);
+                    audio.removeEventListener('error', handleError);
                 };
             }, []);
 
@@ -110,6 +132,8 @@
                 if (!audio) return;
                 const fade = fadeDurationRef.current;
 
+                setIsLoading(true);  // ← start loading spinner
+
                 // Set the display name
                 if (displayName) setTrackName(displayName);
 
@@ -127,8 +151,8 @@
                         audio.volume = 0;
                         audio.play().then(() => {
                             setIsPlaying(true);
-                            fadeTo(volume, fade);
-                        }).catch(() => {});
+                            fadeTo(volume, fade);   // fade in (also clears loading via the 'playing' event)
+                        }).catch(() => setIsLoading(false));
                         setAudioUrl(url);
                     });
                 } else {
@@ -141,8 +165,8 @@
                     audio.volume = 0;
                     audio.play().then(() => {
                         setIsPlaying(true);
-                        fadeTo(volume, fade);
-                    }).catch(() => {});
+                        fadeTo(volume, fade);   // fade in (also clears loading via the 'playing' event)
+                    }).catch(() => setIsLoading(false));
                     setAudioUrl(url);
                 }
             };
@@ -183,6 +207,7 @@
                     audio.pause();
                     audio.currentTime = 0;
                     setIsPlaying(false);
+                    setIsLoading(false);  // ← add
                     setProgress(0);
                     setAudioUrl(null);
                     setTrackName('');
@@ -227,7 +252,7 @@
 
             return (
                 <AudioContext.Provider value={{
-                    audioUrl, isPlaying, progress, duration, volume,
+                    audioUrl, isPlaying, progress, duration, volume, isLoading,
                     trackName, setTrackName,
                     fadeEnabled, setFadeEnabled,
                     play, resume, pause, stopAll, resetAll,
@@ -499,6 +524,10 @@
             const [autoplay, setAutoplay] = useState(false);
             const [autoplayProgress, setAutoplayProgress] = useState(0);
 
+            // Presenter sync (opens slide-presenter.html in a new tab/window)
+            const presenterChannelRef = useRef(null);
+            const presenterWindowRef = useRef(null);
+
             const AUTOPLAY_DURATION = 5000; // 5 seconds per slide
 
             const handleFiles = async (e) => {
@@ -593,6 +622,92 @@
                 }, 50);
                 return () => clearInterval(interval);
             }, [autoplay, currentIndex, slides.length]);
+
+            // Cleanup the presenter channel on unmount
+            useEffect(() => {
+                return () => {
+                    if (presenterChannelRef.current) {
+                        presenterChannelRef.current.close();
+                    }
+                };
+            }, []);
+
+            // Broadcast whenever slides change (upload / delete)
+            useEffect(() => {
+                if (presenterChannelRef.current) {
+                    presenterChannelRef.current.postMessage({
+                        action: 'setSlides',
+                        slides: slides,
+                        currentIndex: currentIndex,
+                    });
+                }
+            }, [slides]);
+
+            // Broadcast whenever current index changes
+            useEffect(() => {
+                if (presenterChannelRef.current) {
+                    presenterChannelRef.current.postMessage({
+                        action: 'setIndex',
+                        index: currentIndex,
+                    });
+                }
+            }, [currentIndex]);
+
+            // Listen for navigation from the presenter window
+            useEffect(() => {
+                const ch = new BroadcastChannel('slide_presenter');
+                presenterChannelRef.current = ch;
+
+                ch.onmessage = (e) => {
+                    const data = e.data;
+                    if (data && data.action === 'navigate') {
+                        if (data.direction === 'next') goNext();
+                        else if (data.direction === 'prev') goPrev();
+                    }
+                };
+
+                return () => ch.close();
+            }, [slides.length, currentIndex]);
+
+            const openPresenter = () => {
+                if (slides.length === 0) {
+                    alert('Upload slides first before presenting.');
+                    return;
+                }
+
+                // Open or focus the presenter window
+                if (presenterWindowRef.current && !presenterWindowRef.current.closed) {
+                    presenterWindowRef.current.focus();
+                    // Re-sync
+                    if (presenterChannelRef.current) {
+                        presenterChannelRef.current.postMessage({
+                            action: 'setSlides',
+                            slides: slides,
+                            currentIndex: currentIndex,
+                        });
+                    }
+                    return;
+                }
+
+                const win = window.open(
+                    '/slide-presenter.html',
+                    'slide_presenter_window',
+                    'width=1280,height=720,menubar=no,toolbar=no'
+                );
+                presenterWindowRef.current = win;
+
+                // Send slides after the window loads
+                setTimeout(() => {
+                    if (presenterChannelRef.current) {
+                        presenterChannelRef.current.postMessage({
+                            action: 'setSlides',
+                            slides: slides,
+                            currentIndex: currentIndex,
+                        });
+                    }
+                }, 800);
+            };
+
             return (
                 <div className="slide-presenter">
                     {props.title && <div className="viewer-playlist-title">{props.title}</div>}
@@ -631,7 +746,23 @@
                             {/* Secondary controls */}
                             <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
                                 <button className="btn btn-primary btn-sm" onClick={() => setFullscreen(true)}>
-                                    <i className="fas fa-expand"></i> Present
+                                    <i className="fas fa-expand"></i> Fullscreen
+                                </button>
+                                <button className="btn btn-sm" style={{
+                                    background: 'var(--color-navy)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: 30,
+                                    fontFamily: 'inherit',
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                }} onClick={openPresenter}>
+                                    <i className="fas fa-external-link-alt"></i> Present in New Tab
                                 </button>
                                 <button
                                     className={`btn btn-sm ${autoplay ? 'btn-danger' : 'btn-secondary'}`}
@@ -862,6 +993,84 @@
         };
 
         // ================================================================
+        // LOADING TOAST (top-right notification)
+        // ================================================================
+        const LoadingToast = ({ audioCtx }) => {
+            const [visible, setVisible] = useState(false);
+            const [message, setMessage] = useState('');
+            const [kind, setKind] = useState('loading');
+            const prevLoading = useRef(false);
+            const prevPlaying = useRef(false);
+            const hideTimerRef = useRef(null);
+
+            useEffect(() => {
+                if (hideTimerRef.current) {
+                    clearTimeout(hideTimerRef.current);
+                    hideTimerRef.current = null;
+                }
+
+                // Loading started
+                if (audioCtx.isLoading && !prevLoading.current) {
+                    setMessage('Loading music…');
+                    setKind('loading');
+                    setVisible(true);
+                }
+
+                // Loading finished → playing started
+                if (!audioCtx.isLoading && audioCtx.isPlaying && !prevPlaying.current) {
+                    setMessage(`Playing: ${audioCtx.trackName || 'Track'}`);
+                    setKind('playing');
+                    setVisible(true);
+                    hideTimerRef.current = setTimeout(() => setVisible(false), 2500);
+                }
+
+                // Playing stopped
+                if (!audioCtx.isPlaying && prevPlaying.current) {
+                    hideTimerRef.current = setTimeout(() => setVisible(false), 500);
+                }
+
+                prevLoading.current = audioCtx.isLoading;
+                prevPlaying.current = audioCtx.isPlaying;
+            }, [audioCtx.isLoading, audioCtx.isPlaying, audioCtx.trackName]);
+
+            if (!visible) return null;
+
+            const styles = {
+                loading: { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', icon: 'fa-spinner fa-spin' },
+                playing: { bg: 'linear-gradient(135deg, #10B981, #059669)', icon: 'fa-play' },
+                error:   { bg: 'linear-gradient(135deg, #EF4444, #DC2626)', icon: 'fa-exclamation-triangle' },
+            };
+            const s = styles[kind];
+
+            return (
+                <div style={{
+                    position: 'fixed',
+                    top: 20,
+                    right: 20,
+                    background: s.bg,
+                    color: '#fff',
+                    padding: '12px 18px',
+                    borderRadius: 12,
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    zIndex: 99999,
+                    animation: 'slideInRight 250ms ease',
+                    backdropFilter: 'blur(10px)',
+                    maxWidth: 320,
+                }}>
+                    <i className={`fas ${s.icon}`} style={{ fontSize: 16 }}></i>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {message}
+                    </span>
+                </div>
+            );
+        };
+
+        // ================================================================
         // VIEWER APP
         // ================================================================
         const ViewerApp = () => {
@@ -1020,6 +1229,7 @@
                     </div>
 
                     <FloatingAudioPlayer audioCtx={audioCtx} visible={true} />
+                    <LoadingToast audioCtx={audioCtx} />
                 </div>
             );
         };
