@@ -524,9 +524,15 @@
             const [autoplay, setAutoplay] = useState(false);
             const [autoplayProgress, setAutoplayProgress] = useState(0);
 
-            // Presenter sync (opens slide-presenter.html in a new tab/window)
-            const presenterChannelRef = useRef(null);
+            // ============================================================
+            // BROADCAST CHANNEL — opens once, closes on unmount
+            // ============================================================
+            const channelRef = useRef(null);
             const presenterWindowRef = useRef(null);
+
+            // Keep refs in sync with latest values
+            const slidesRef = useRef(slides);
+            const currentIndexRef = useRef(currentIndex);
 
             const AUTOPLAY_DURATION = 5000; // 5 seconds per slide
 
@@ -623,72 +629,84 @@
                 return () => clearInterval(interval);
             }, [autoplay, currentIndex, slides.length]);
 
-            // Cleanup the presenter channel on unmount
-            useEffect(() => {
-                return () => {
-                    if (presenterChannelRef.current) {
-                        presenterChannelRef.current.close();
-                    }
-                };
-            }, []);
+            useEffect(() => { slidesRef.current = slides; }, [slides]);
+            useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
 
-            // Broadcast whenever slides change (upload / delete)
-            useEffect(() => {
-                if (presenterChannelRef.current) {
-                    presenterChannelRef.current.postMessage({
-                        action: 'setSlides',
-                        slides: slides,
-                        currentIndex: currentIndex,
-                    });
-                }
-            }, [slides]);
-
-            // Broadcast whenever current index changes
-            useEffect(() => {
-                if (presenterChannelRef.current) {
-                    presenterChannelRef.current.postMessage({
-                        action: 'setIndex',
-                        index: currentIndex,
-                    });
-                }
-            }, [currentIndex]);
-
-            // Listen for navigation from the presenter window
+            // Open channel ONCE on mount
             useEffect(() => {
                 const ch = new BroadcastChannel('slide_presenter');
-                presenterChannelRef.current = ch;
+                channelRef.current = ch;
 
                 ch.onmessage = (e) => {
                     const data = e.data;
-                    if (data && data.action === 'navigate') {
-                        if (data.direction === 'next') goNext();
-                        else if (data.direction === 'prev') goPrev();
+                    if (!data) return;
+                    if (data.action === 'navigate') {
+                        if (data.direction === 'next') {
+                            setCurrentIndex(prev => {
+                                const newIdx = slidesRef.current.length
+                                    ? (prev + 1) % slidesRef.current.length
+                                    : 0;
+                                return newIdx;
+                            });
+                        } else if (data.direction === 'prev') {
+                            setCurrentIndex(prev => {
+                                const len = slidesRef.current.length;
+                                const newIdx = len ? (prev - 1 + len) % len : 0;
+                                return newIdx;
+                            });
+                        }
                     }
                 };
 
-                return () => ch.close();
-            }, [slides.length, currentIndex]);
+                return () => {
+                    ch.close();
+                    channelRef.current = null;
+                };
+            }, []); // ← empty deps = opens once, closes on unmount
 
+            // Safe broadcast helper
+            const broadcast = (message) => {
+                if (channelRef.current) {
+                    try {
+                        channelRef.current.postMessage(message);
+                    } catch (e) {
+                        // Channel was closed between check and post — ignore
+                        console.warn('Broadcast skipped:', e.message);
+                    }
+                }
+            };
+
+            // Broadcast when slides change
+            useEffect(() => {
+                broadcast({ action: 'setSlides', slides, currentIndex: currentIndexRef.current });
+            }, [slides]);
+
+            // Broadcast when current index changes
+            useEffect(() => {
+                broadcast({ action: 'setIndex', index: currentIndex });
+            }, [currentIndex]);
+
+            // ============================================================
+            // OPEN PRESENTER WINDOW
+            // ============================================================
             const openPresenter = () => {
                 if (slides.length === 0) {
                     alert('Upload slides first before presenting.');
                     return;
                 }
 
-                // Open or focus the presenter window
+                // If window exists and is open, focus it and re-sync
                 if (presenterWindowRef.current && !presenterWindowRef.current.closed) {
                     presenterWindowRef.current.focus();
-                    // Re-sync
-                    if (presenterChannelRef.current) {
-                        presenterChannelRef.current.postMessage({
-                            action: 'setSlides',
-                            slides: slides,
-                            currentIndex: currentIndex,
-                        });
-                    }
+                    broadcast({
+                        action: 'setSlides',
+                        slides: slidesRef.current,
+                        currentIndex: currentIndexRef.current,
+                    });
                     return;
                 }
 
+                // Open new window
                 const win = window.open(
                     '/slide-presenter.html',
                     'slide_presenter_window',
@@ -696,17 +714,34 @@
                 );
                 presenterWindowRef.current = win;
 
-                // Send slides after the window loads
-                setTimeout(() => {
-                    if (presenterChannelRef.current) {
-                        presenterChannelRef.current.postMessage({
+                // Send slides after the new window is ready
+                if (win) {
+                    // Try sending after 500ms, then again at 1200ms for safety
+                    setTimeout(() => {
+                        broadcast({
                             action: 'setSlides',
-                            slides: slides,
-                            currentIndex: currentIndex,
+                            slides: slidesRef.current,
+                            currentIndex: currentIndexRef.current,
                         });
-                    }
-                }, 800);
+                    }, 500);
+                    setTimeout(() => {
+                        broadcast({
+                            action: 'setSlides',
+                            slides: slidesRef.current,
+                            currentIndex: currentIndexRef.current,
+                        });
+                    }, 1200);
+                }
             };
+
+            // Cleanup: close presenter window on unmount
+            useEffect(() => {
+                return () => {
+                    if (presenterWindowRef.current && !presenterWindowRef.current.closed) {
+                        presenterWindowRef.current.close();
+                    }
+                };
+            }, []);
 
             return (
                 <div className="slide-presenter">
