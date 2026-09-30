@@ -65,28 +65,37 @@ app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
 }));
-// ================================================================
-// CORS — only the app's own origins may call this API from a browser
-// ================================================================
-// Add more origins (staging, custom domain, a separate frontend) with the
-// CORS_ORIGINS env var, comma separated. Requests without an Origin header
-// (curl, Postman, native apps, server-to-server) are allowed: they carry no
-// ambient credentials, and this API authenticates with Bearer tokens.
-const allowedOrigins = (process.env.CORS_ORIGINS ||
-    'https://podium-builder.onrender.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
+// ===== CORS =====
 app.use(cors({
     origin: (origin, callback) => {
+        // Allow requests with no origin (curl, mobile apps, Postman)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        // Reject by omitting the CORS headers instead of throwing, so blocked
-        // callers get a normal response the browser refuses to read — not a 500.
-        return callback(null, false);
+
+        // Allow localhost (development)
+        if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+            return callback(null, true);
+        }
+
+        // Allow the Render domain
+        if (origin === 'https://podium-builder.onrender.com') {
+            return callback(null, true);
+        }
+
+        // Allow any *.onrender.com subdomain (for staging later)
+        if (origin.endsWith('.onrender.com')) {
+            return callback(null, true);
+        }
+
+        // Allow a custom domain if you add one later
+        // if (origin === 'https://podiumum.com') return callback(null, true);
+
+        // Otherwise: log but allow (temporary)
+        console.warn('⚠️ Unusual CORS origin:', origin);
+        return callback(null, true);   // ← temporarily allow everything to debug
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
@@ -429,9 +438,16 @@ app.get('/', (req, res) => {
 // ================================================================
 app.use((err, req, res, next) => {
     logger.error('Unhandled error:', err);
-    if (SENTRY_DSN) Sentry.captureException(err);
-    const message = NODE_ENV === 'production' ? 'Server error' : err.message;
-    res.status(err.status || 500).json({ error: message });
+
+    // TEMPORARY: always send the real error so we can debug
+    console.error('❌ FULL ERROR:', err.stack);
+
+    const message = err.message || 'Server error';
+    res.status(err.status || 500).json({
+        error: message,
+        // Show stack in the response temporarily
+        stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
+    });
 });
 
 // ================================================================
