@@ -178,6 +178,20 @@ app.get('/api/verify', authenticate, (req, res) => {
     res.json({ valid: true, user: { id: req.user.id, email: req.user.email } });
 });
 
+// ================================================================
+// PUBLIC CLIENT CONFIG
+// ================================================================
+// Hands the browser SDK its Supabase URL + anon key so no credentials
+// have to be hardcoded in the HTML files. The anon key is public by
+// design (all access is still enforced by RLS), but it stays out of git.
+app.get('/api/config', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+        supabaseUrl: process.env.SUPABASE_URL || null,
+        supabaseAnonKey: process.env.SUPABASE_ANON_KEY || null,
+    });
+});
+
 // Get current user
 app.get('/api/me', authenticate, (req, res) => {
     res.json({ id: req.user.id, email: req.user.email });

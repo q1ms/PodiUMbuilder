@@ -54,71 +54,153 @@
         </div>
         <div id="error" style="display:none;">
             <div class="status-icon">❌</div>
-            <h2 style="font-weight:700;color:#11233B;margin-bottom:8px;">Confirmation Failed</h2>
+            <h2 style="font-weight:700;color:#11233B;margin-bottom:8px;">Sign-in Failed</h2>
             <p id="errorMsg" style="color:#6B7280;font-size:14px;margin-bottom:20px;">Something went wrong.</p>
             <a href="/" class="btn btn-primary">Go to Dashboard</a>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Parse the hash fragment that Supabase sends:
-        // #access_token=...&refresh_token=...&type=signup
-        (async function() {
-            const hash = window.location.hash.substring(1);
-            const params = new URLSearchParams(hash);
+        // ================================================================
+        // HELPERS
+        // ================================================================
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('errorMsg').textContent = message;
+        }
 
-            const accessToken = params.get('access_token');
-            const refreshToken = params.get('refresh_token');
-            const errorCode = params.get('error');
-            const errorDesc = params.get('error_description');
+        function showSuccess(title, message) {
+            const titleEl = document.querySelector('#success h2');
+            const textEl = document.querySelector('#success p');
+            if (titleEl) titleEl.textContent = title;
+            if (textEl) textEl.textContent = message;
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('success').style.display = 'block';
+        }
 
-            if (errorCode || errorDesc) {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('errorMsg').textContent = errorDesc || errorCode;
-                return;
+        // Public Supabase config is served by GET /api/config, so no URL or
+        // anon key is hardcoded in this file.
+        async function createSupabaseClient() {
+            if (typeof supabase === 'undefined') throw new Error('Supabase SDK failed to load.');
+            const resp = await fetch('/api/config?_t=' + Date.now(), { cache: 'no-store' });
+            if (!resp.ok) throw new Error('Could not load Supabase config (' + resp.status + ').');
+            const cfg = await resp.json();
+            if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+                throw new Error('Supabase is not configured on the server.');
             }
+            return supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+                auth: {
+                    // OAuth codes are only issued for the PKCE flow, so the
+                    // client that starts the flow must use it too.
+                    flowType: 'pkce',
+                    // We handle the redirect parameters by hand below.
+                    detectSessionInUrl: false,
+                },
+            });
+        }
 
-            if (!accessToken || !refreshToken) {
-                // No tokens — maybe user opened the page directly
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('errorMsg').textContent = 'No confirmation token found. Please use the link from your email.';
-                return;
-            }
-
-            // Save the session to localStorage (same format as the dashboard expects)
-            const session = {
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour
-            };
-            localStorage.setItem('podiumSession', JSON.stringify(session));
-
-            // Fetch user info to also store it
+        // Ask the server to validate a Supabase access token and return the user.
+        async function fetchUser(accessToken) {
             try {
                 const resp = await fetch('/api/verify', {
                     headers: { 'Authorization': 'Bearer ' + accessToken },
                 });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.user) {
-                        localStorage.setItem('podiumUser', JSON.stringify(data.user));
-                    }
-                }
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                return data.user || null;
             } catch (e) {
                 console.warn('Could not fetch user:', e);
+                return null;
+            }
+        }
+
+        // ================================================================
+        // CALLBACK HANDLER — Google OAuth (PKCE) + email confirmation
+        // ================================================================
+        (async function() {
+            // Two possible payloads come back from Supabase:
+            //   ?code=...                  → OAuth (PKCE) redirect
+            //   #access_token=...&type=... → email confirmation (implicit flow)
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const queryParams = new URLSearchParams(window.location.search);
+
+            const code = queryParams.get('code');
+            const accessToken = hashParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token');
+            const errorCode = hashParams.get('error') || queryParams.get('error');
+            const errorDesc = hashParams.get('error_description') || queryParams.get('error_description');
+
+            if (errorCode || errorDesc) {
+                showError(errorDesc || errorCode);
+                return;
             }
 
-            // Show success, then redirect
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('success').style.display = 'block';
+            // Swap the loading copy when we know this is a Google sign-in
+            if (code) {
+                const loadingTitle = document.querySelector('#loading h2');
+                const loadingText = document.querySelector('#loading p');
+                if (loadingTitle) loadingTitle.textContent = 'Signing you in…';
+                if (loadingText) loadingText.textContent = 'Please wait while we finish signing you in with Google.';
+            }
 
-            // Clean the URL (remove the hash) and redirect
-            setTimeout(() => {
-                window.location.href = '/?confirmed=1';
-            }, 1500);
+            // ---------- OAuth (PKCE): exchange the code for a session ----------
+            if (code) {
+                try {
+                    const client = await createSupabaseClient();
+
+                    let session = null;
+                    try {
+                        const { data, error } = await client.auth.exchangeCodeForSession(code);
+                        if (error) throw error;
+                        session = data?.session || null;
+                    } catch (exchangeErr) {
+                        // The SDK might have already consumed the code during init.
+                        console.warn('Code exchange failed — checking for an existing session:', exchangeErr.message);
+                        const { data } = await client.auth.getSession();
+                        session = data?.session || null;
+                        if (!session) throw exchangeErr;
+                    }
+                    if (!session?.access_token) throw new Error('Sign-in did not return a session.');
+
+                    // Store the session in the format the dashboard expects
+                    localStorage.setItem('podiumSession', JSON.stringify(session));
+
+                    const user = (await fetchUser(session.access_token)) ||
+                        (session.user ? { id: session.user.id, email: session.user.email } : null);
+                    if (user) localStorage.setItem('podiumUser', JSON.stringify(user));
+
+                    showSuccess('Signed in!', 'Your Google account is connected. Redirecting to dashboard…');
+                    setTimeout(() => { window.location.href = '/'; }, 1200);
+                } catch (e) {
+                    console.error('OAuth callback error:', e);
+                    showError('Could not complete Google sign-in: ' + e.message);
+                }
+                return;
+            }
+
+            // ---------- Email confirmation: tokens arrive in the hash ----------
+            if (accessToken && refreshToken) {
+                const session = {
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour
+                };
+                localStorage.setItem('podiumSession', JSON.stringify(session));
+
+                const user = await fetchUser(accessToken);
+                if (user) localStorage.setItem('podiumUser', JSON.stringify(user));
+
+                showSuccess('Email Confirmed!', 'Your account is ready. Redirecting to dashboard…');
+                setTimeout(() => { window.location.href = '/?confirmed=1'; }, 1500);
+                return;
+            }
+
+            // ---------- Nothing to confirm ----------
+            showError('No confirmation token found. Please use the link from your email.');
         })();
     </script>
 </body>
 </html>
+
