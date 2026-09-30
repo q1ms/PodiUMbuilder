@@ -434,21 +434,24 @@ test('Secrets: .env is not downloadable', async () => {
 });
 
 // ================================================================
-// TEST 19: CORS does not reflect arbitrary origins
+// TEST 19: CORS honours the origin allowlist
 // ================================================================
-test('CORS: arbitrary origins are not trusted', async () => {
-    const resp = await fetchJson('/health', { headers: { 'Origin': 'https://evil.example' } });
-    if (!resp.headers) return { status: 'warn', detail: 'No response headers' };
-    const allowOrigin = resp.headers.get('access-control-allow-origin');
-    const allowCreds = resp.headers.get('access-control-allow-credentials');
-    if (!allowOrigin) return { status: 'pass', detail: 'No CORS header for an unknown origin' };
-    if (allowOrigin === 'https://evil.example' && allowCreds === 'true') {
-        return {
-            status: 'warn',
-            detail: `Server reflects any Origin (${allowOrigin}) with credentials:true — low risk here because auth uses Bearer tokens, not cookies`,
-        };
+test('CORS: only allowlisted origins are trusted', async () => {
+    const evil = await fetchJson('/health', { headers: { 'Origin': 'https://evil.example' } });
+    const self = await fetchJson('/health', { headers: { 'Origin': BASE_URL } });
+    if (!evil.headers || !self.headers) return { status: 'warn', detail: 'No response headers' };
+
+    const evilAcao = evil.headers.get('access-control-allow-origin');
+    const selfAcao = self.headers.get('access-control-allow-origin');
+
+    if (evilAcao) {
+        const creds = evil.headers.get('access-control-allow-credentials') === 'true' ? ' with credentials:true' : '';
+        return { status: 'warn', detail: 'Server reflects an unknown Origin (' + evilAcao + ')' + creds + ' — low risk while auth uses Bearer tokens, but tighten it to an allowlist' };
     }
-    return { status: 'warn', detail: `CORS allows ${allowOrigin} (credentials: ${allowCreds || 'no'})` };
+    if (!selfAcao || selfAcao.toLowerCase() !== BASE_URL.toLowerCase()) {
+        return { status: 'warn', detail: 'Unknown origins are blocked, but ' + BASE_URL + ' is not in the CORS allowlist' };
+    }
+    return { status: 'pass', detail: 'Unknown origins blocked; ' + BASE_URL + ' allowed' };
 });
 
 // ================================================================

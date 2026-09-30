@@ -65,7 +65,29 @@ app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
 }));
-app.use(cors({ origin: true, credentials: true }));
+// ================================================================
+// CORS — only the app's own origins may call this API from a browser
+// ================================================================
+// Add more origins (staging, custom domain, a separate frontend) with the
+// CORS_ORIGINS env var, comma separated. Requests without an Origin header
+// (curl, Postman, native apps, server-to-server) are allowed: they carry no
+// ambient credentials, and this API authenticates with Bearer tokens.
+const allowedOrigins = (process.env.CORS_ORIGINS ||
+    'https://podium-builder.onrender.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        // Reject by omitting the CORS headers instead of throwing, so blocked
+        // callers get a normal response the browser refuses to read — not a 500.
+        return callback(null, false);
+    },
+    credentials: true,
+}));
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 // Only browser-facing files live in public/ — server code, package files
