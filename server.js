@@ -240,9 +240,9 @@ app.get('/api/me', authenticate, (req, res) => {
 // List all sites for current user
 app.get('/api/sites', authenticate, async (req, res, next) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('sites')
-            .select('id, name, created_at, updated_at, data->logoUrl, data->bgColor')
+            .select('id, name, created_at, updated_at, data')
             .eq('user_id', req.user.id)
             .order('updated_at', { ascending: false });
 
@@ -255,7 +255,8 @@ app.get('/api/sites', authenticate, async (req, res, next) => {
 app.get('/api/sites/:id', authenticate, async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { data, error } = await supabase
+
+        const { data, error } = await supabaseAdmin
             .from('sites')
             .select('*')
             .eq('id', id)
@@ -267,14 +268,18 @@ app.get('/api/sites/:id', authenticate, async (req, res, next) => {
     } catch (err) { next(err); }
 });
 
-// Create new site
+// ================================================================
+// CREATE SITE
+// ================================================================
 app.post('/api/sites', authenticate, async (req, res, next) => {
     try {
         const { name = 'Untitled Site', data = {} } = req.body;
-        const { data: site, error } = await supabase
+        const userId = req.user.id;  // ← from the verified JWT
+
+        const { data: site, error } = await supabaseAdmin   // ← use ADMIN client
             .from('sites')
             .insert({
-                user_id: req.user.id,
+                user_id: userId,   // ← explicitly set
                 name,
                 data: {
                     components: [],
@@ -290,10 +295,16 @@ app.post('/api/sites', authenticate, async (req, res, next) => {
             .select()
             .single();
 
-        if (error) throw error;
-        logger.info(`Created site: ${site.id} for ${req.user.email}`);
+        if (error) {
+            console.error('Supabase insert error:', error);
+            return res.status(500).json({ error: error.message });
+        }
+
+        console.log(`✅ Created site ${site.id} for user ${userId}`);
         res.json(site);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Update site
@@ -302,17 +313,15 @@ app.put('/api/sites/:id', authenticate, async (req, res, next) => {
         const { id } = req.params;
         const { name, data } = req.body;
 
-        console.log('📝 PUT /api/sites/' + id, 'user:', req.user.id);
-
         const update = {};
         if (name !== undefined) update.name = name;
         if (data !== undefined) update.data = data;
 
-        const { data: site, error } = await supabase
+        const { data: site, error } = await supabaseAdmin
             .from('sites')
             .update(update)
             .eq('id', id)
-            .eq('user_id', req.user.id)
+            .eq('user_id', req.user.id)   // ← ensure only own site
             .select()
             .single();
 
@@ -320,14 +329,11 @@ app.put('/api/sites/:id', authenticate, async (req, res, next) => {
             console.error('Supabase update error:', error);
             return res.status(500).json({ error: error.message });
         }
-        if (!site) {
-            return res.status(404).json({ error: 'Site not found' });
-        }
+        if (!site) return res.status(404).json({ error: 'Site not found' });
 
         res.json(site);
     } catch (err) {
-        console.error('PUT site exception:', err);
-        res.status(500).json({ error: err.message });
+        next(err);
     }
 });
 
@@ -335,16 +341,21 @@ app.put('/api/sites/:id', authenticate, async (req, res, next) => {
 app.delete('/api/sites/:id', authenticate, async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { error } = await supabase
+
+        const { error } = await supabaseAdmin
             .from('sites')
             .delete()
             .eq('id', id)
-            .eq('user_id', req.user.id);
+            .eq('user_id', req.user.id);  // ← ensure only own site
 
-        if (error) throw error;
-        logger.info(`Deleted site: ${id}`);
+        if (error) {
+            console.error('Supabase delete error:', error);
+            return res.status(500).json({ error: error.message });
+        }
         res.json({ success: true });
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 });
 
 // ================================================================
