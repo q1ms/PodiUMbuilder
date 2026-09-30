@@ -1,0 +1,58 @@
+name: Security Audit
+
+on:
+  # Run on every push to main
+  push:
+    branches: [main]
+  # Run daily at 9am Malaysia time (01:00 UTC)
+  schedule:
+    - cron: '0 1 * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Output is tee'd into audit-output.txt so it can be archived below.
+      # `set -o pipefail` keeps the audit's exit code (1 = a check failed),
+      # which a plain `| tee` pipeline would otherwise swallow.
+      - name: Run security audit
+        env:
+          AUDIT_URL: https://podium-builder.onrender.com
+        run: |
+          set -o pipefail
+          node security-audit.js 2>&1 | tee audit-output.txt
+
+      - name: Save audit result
+        if: always()
+        run: |
+          mkdir -p audit-history
+          SUMMARY=$(sed 's/\x1b\[[0-9;]*m//g' audit-output.txt 2>/dev/null | grep -E '[0-9]+ passed' | tail -1 | xargs || true)
+          echo "$(date -Iseconds) - ${SUMMARY:-audit did not complete}" >> audit-history/history.txt
+          echo "--- audit-history/history.txt ---"
+          cat audit-history/history.txt
+
+      - name: Upload audit history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-history
+          path: |
+            audit-history/
+            audit-output.txt
+          retention-days: 90
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ Security audit failed! Check the logs above."
+          # Optional: send email, Slack, Discord webhook, etc.
