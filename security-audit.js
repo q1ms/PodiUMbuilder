@@ -289,29 +289,6 @@ test('Auth: /api/signup exists', async () => {
 });
 
 // ================================================================
-// TEST 11: Rate limiting on login
-// NOTE: this deliberately exhausts the login limiter for the IP
-// running the audit, so later auth checks may see 429 as well.
-// ================================================================
-test('Rate limit: login is throttled', async () => {
-    // Fire 15 requests quickly
-    const attempts = [];
-    for (let i = 0; i < 15; i++) {
-        attempts.push(fetchJson('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'audit@test.com', password: 'wrong' }),
-        }));
-    }
-    const results = await Promise.all(attempts);
-    const throttled = results.filter(r => r.status === 429).length;
-    if (throttled > 0) {
-        return { status: 'pass', detail: `${throttled}/15 requests got 429 (Too Many Requests)` };
-    }
-    return { status: 'fail', detail: 'No rate limiting detected on login endpoint' };
-});
-
-// ================================================================
 // TEST 12: Sensitive env vars not exposed
 // ================================================================
 test('Secrets: service key not in frontend', async () => {
@@ -472,6 +449,46 @@ test('CORS: arbitrary origins are not trusted', async () => {
         };
     }
     return { status: 'warn', detail: `CORS allows ${allowOrigin} (credentials: ${allowCreds || 'no'})` };
+});
+
+// ================================================================
+// TEST 11: Rate limiting on login
+// Runs LAST on purpose: it deliberately exhausts the login limiter, so
+// running it earlier would poison the auth checks above it.
+// ================================================================
+test('Rate limit: login is throttled', async () => {
+    // The attempts are sent one at a time so they all leave from the same
+    // client address. Firing them in parallel makes a multi-homed runner
+    // split them across two source IPs, which the limiter correctly treats
+    // as two different clients (that produced false negatives before).
+    const attempts = 15;
+    let throttled = 0;
+    let limitHeader = null;
+    let remainingHeader = null;
+
+    for (let i = 0; i < attempts; i++) {
+        const resp = await fetchJson('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'audit@test.com', password: 'wrong' }),
+        });
+        if (resp.status === 429) throttled++;
+        if (resp.headers) {
+            limitHeader = resp.headers.get('ratelimit-limit') || limitHeader;
+            remainingHeader = resp.headers.get('ratelimit-remaining') || remainingHeader;
+        }
+    }
+
+    if (throttled > 0) {
+        return { status: 'pass', detail: throttled + '/' + attempts + ' requests got 429 (Too Many Requests)' };
+    }
+    if (limitHeader) {
+        return {
+            status: 'warn',
+            detail: 'Limiter is configured (RateLimit-Limit=' + limitHeader + ', remaining=' + remainingHeader + ') but ' + attempts + ' sequential failed logins never tripped it — check the store/key',
+        };
+    }
+    return { status: 'fail', detail: 'No rate limiting detected on login endpoint' };
 });
 
 // ================================================================

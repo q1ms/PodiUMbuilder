@@ -68,13 +68,18 @@ app.use(helmet({
 app.use(cors({ origin: true, credentials: true }));
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname));
+// Only browser-facing files live in public/ — server code, package files
+// and the audit script stay outside the web root and are never served.
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Rate limiters
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
     message: { error: 'Too many login attempts. Try again later.' },
+    // Only failed attempts count against the budget — a successful login is
+    // not counted, so real users never lock themselves out.
+    skipSuccessfulRequests: true,
     standardHeaders: true, legacyHeaders: false,
 });
 const apiLimiter = rateLimit({
@@ -394,7 +399,7 @@ app.get('/api/public/site/:id', async (req, res, next) => {
 // STATIC FILES
 // ================================================================
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
 // ================================================================
