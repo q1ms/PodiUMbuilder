@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Presenter</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/styles.css" />
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -1308,11 +1309,17 @@
                             borderBottom: '1px solid #F1F5F9',
                             background: 'linear-gradient(180deg, #fff 0%, #FAFBFC 100%)',
                         }}>
-                            {site.logoUrl && (
+                            {site.logoUrl ? (
                                 <img
                                     src={site.logoUrl}
                                     alt="Logo"
                                     style={{ maxHeight: 80, width: 'auto', objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.08))' }}
+                                />
+                            ) : (
+                                <img
+                                    src="/logo.svg"
+                                    alt="Podi@UM"
+                                    style={{ maxHeight: 64, width: 'auto', objectFit: 'contain', margin: '0 auto 20px', display: 'block', opacity: 0.9 }}
                                 />
                             )}
                             <h1 style={{ fontSize: 36, fontWeight: 800, color: '#11233B', margin: 0, letterSpacing: '-0.02em' }}>

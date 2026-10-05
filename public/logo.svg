@@ -1,0 +1,17 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- White background -->
+  <rect width="512" height="512" fill="#FFFFFF"/>
+
+  <!-- Medal / circle at top -->
+  <circle cx="256" cy="98" r="46" fill="#116DFF"/>
+  <!-- Ribbon hint inside medal -->
+  <path d="M 236 100 L 256 100 L 256 120 L 236 120 Z" fill="#FFFFFF" opacity="0.35"/>
+
+  <!-- Podium bars (ascending left to right) -->
+  <rect x="72"  y="310" width="120" height="130" rx="16" fill="#116DFF"/>
+  <rect x="196" y="240" width="120" height="200" rx="16" fill="#116DFF"/>
+  <rect x="320" y="160" width="120" height="280" rx="16" fill="#116DFF"/>
+
+  <!-- Subtle base line -->
+  <rect x="72" y="442" width="368" height="6" rx="3" fill="#116DFF" opacity="0.25"/>
+</svg>
