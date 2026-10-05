@@ -1,921 +1,434 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard — Podi@UM</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <link rel="stylesheet" href="/styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-        // ================================================================
-        // SUPABASE CLIENT — config comes from GET /api/config
-        // ================================================================
-        // window.supabaseReady resolves to the client, or to null when the
-        // server has no Supabase credentials (Google sign-in is then off).
-        window.supabaseClient = null;
-        window.supabaseReady = (async function() {
-            try {
-                if (typeof supabase === 'undefined') throw new Error('Supabase SDK failed to load');
-                const resp = await fetch('/api/config?_t=' + Date.now(), { cache: 'no-store' });
-                if (!resp.ok) throw new Error('Config request failed (' + resp.status + ')');
-                const cfg = await resp.json();
-                if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
-                    throw new Error('Supabase is not configured on the server');
-                }
-                window.supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-                    auth: {
-                        // OAuth needs the PKCE flow so Supabase redirects back
-                        // to auth-callback.html with a ?code= to exchange.
-                        flowType: 'pkce',
-                        // This page never handles OAuth redirects itself.
-                        detectSessionInUrl: false,
-                    },
-                });
-                return window.supabaseClient;
-            } catch (e) {
-                console.warn('Supabase client unavailable — Google sign-in disabled:', e.message);
-                return null;
-            }
-        })();
-    </script>
-    <style>
-        body { background: var(--color-bg-subtle); }
-        .topbar {
-            background: #fff;
-            border-bottom: 1px solid var(--color-gray-lighter);
-            padding: 16px 0;
-            position: sticky; top: 0; z-index: 100;
-        }
-        .logo-mark {
-            width: 36px; height: 36px;
-            background: linear-gradient(135deg, var(--color-brand), var(--color-navy));
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            color: #fff; font-weight: 800; font-size: 18px;
-        }
-        .hero {
-            background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
-            border-radius: 24px;
-            padding: 48px 40px;
-            color: #fff;
-            margin: 32px 0;
-            position: relative;
-            overflow: hidden;
-        }
-        .hero::before {
-            content: ''; position: absolute; top: -50%; right: -10%;
-            width: 400px; height: 400px;
-            background: rgba(255,255,255,0.1); border-radius: 50%;
-        }
-        .hero > * { position: relative; z-index: 1; }
-        .hero h1 { font-size: 40px; color: #fff; margin-bottom: 12px; font-weight: 800; letter-spacing: -0.02em; }
-        .hero p { color: rgba(255,255,255,0.9); font-size: 17px; max-width: 500px; }
-
-        .project-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 24px;
-            padding-bottom: 48px;
-        }
-        .project-card {
-            background: #fff;
-            border: 1px solid var(--color-gray-lighter);
-            border-radius: 16px;
-            overflow: hidden;
-            cursor: pointer;
-            transition: all 250ms;
-        }
-        .project-card:hover {
-            border-color: var(--color-brand);
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-4px);
-        }
-        .project-preview {
-            height: 140px;
-            background: linear-gradient(135deg, #F1F5F9 0%, #E6F7FA 100%);
-            display: flex; align-items: center; justify-content: center;
-            position: relative;
-            color: var(--color-brand);
-        }
-        .project-body { padding: 20px; }
-        .project-title {
-            font-size: 17px; font-weight: 600; color: var(--color-navy);
-            margin-bottom: 6px;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .project-meta {
-            font-size: 12px; color: var(--color-gray-light);
-            display: flex; align-items: center; gap: 6px;
-            margin-bottom: 14px;
-        }
-        .project-actions {
-            display: flex; gap: 6px; justify-content: flex-end;
-        }
-        .empty-state {
-            grid-column: 1 / -1;
-            text-align: center;
-            padding: 64px 24px;
-            color: var(--color-gray);
-        }
-        .empty-state i { font-size: 48px; color: var(--color-gray-lighter); margin-bottom: 16px; display: block; }
-
-        /* Login page */
-        .login-wrapper {
-            min-height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-            padding: 24px;
-            background: linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%);
-        }
-        .login-card {
-            background: #fff;
-            border-radius: 24px;
-            box-shadow: 0 20px 50px rgba(17, 35, 59, 0.12);
-            padding: 40px;
-            max-width: 420px;
-            width: 100%;
-        }
-        .auth-tabs {
-            display: flex;
-            gap: 4px;
-            background: #F1F5F9;
-            border-radius: 10px;
-            padding: 4px;
-            margin-bottom: 24px;
-        }
-        .auth-tab {
-            flex: 1;
-            padding: 10px;
-            text-align: center;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            color: var(--color-gray);
-            transition: all 150ms;
-            border: none;
-            background: transparent;
-        }
-        .auth-tab.active {
-            background: #fff;
-            color: var(--color-navy);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        }
-        .error-msg {
-            color: #EF4444;
-            font-size: 13px;
-            margin-top: 12px;
-            display: none;
-            padding: 10px 14px;
-            background: #FEE2E2;
-            border-radius: 8px;
-        }
-        .success-msg {
-            color: #166534;
-            font-size: 13px;
-            margin-top: 12px;
-            display: none;
-            padding: 10px 14px;
-            background: #DCFCE7;
-            border-radius: 8px;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Podi@UM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+window.supabaseClient = null;
+window.supabaseReady = (async function() {
+  try {
+    if (typeof supabase === 'undefined') throw new Error('Supabase SDK failed to load');
+    const resp = await fetch('/api/config?_t=' + Date.now(), { cache: 'no-store' });
+    if (!resp.ok) throw new Error('Config request failed (' + resp.status + ')');
+    const cfg = await resp.json();
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) throw new Error('Supabase not configured');
+    window.supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: 'pkce', detectSessionInUrl: false } });
+    return window.supabaseClient;
+  } catch (e) { console.warn('Supabase unavailable — Google sign-in disabled:', e.message); return null; }
+})();
+</script>
+<style>
+:root { --blue:#116DFF; --blue-light:#E8F1FF; --black:#0A0A0A; --gray-50:#F7F8FA; --gray-100:#F0F2F5; --gray-200:#E4E6EB; --gray-400:#9CA3AF; --gray-600:#4B5563; --success:#10B981; --danger:#EF4444; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',-apple-system,sans-serif; background:#F4F7F9; color:var(--black); -webkit-font-smoothing:antialiased; }
+.auth-screen { min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; padding:24px; background:#F4F7F9; }
+.auth-decor { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+.decor-card { position:absolute; background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.1); overflow:hidden; border:1px solid var(--gray-200); }
+.decor-card-thumb { width:100%; aspect-ratio:16/10; }
+.decor-1 { width:280px; top:8%; left:-60px; transform:rotate(-8deg); animation:floatDecor 8s ease-in-out infinite; }
+.decor-1 .decor-card-thumb { background:linear-gradient(135deg,#D4E4FF,#B8D4FF); }
+.decor-2 { width:320px; top:20%; right:-80px; transform:rotate(6deg); animation:floatDecor 10s ease-in-out infinite; animation-delay:-3s; }
+.decor-2 .decor-card-thumb { background:linear-gradient(135deg,#FFE4D4,#FFD4B8); }
+.decor-3 { width:260px; bottom:-40px; left:8%; transform:rotate(4deg); animation:floatDecor 12s ease-in-out infinite; animation-delay:-6s; }
+.decor-3 .decor-card-thumb { background:linear-gradient(135deg,#E4FFD4,#D4FFB8); }
+.decor-4 { width:300px; bottom:-60px; right:10%; transform:rotate(-5deg); animation:floatDecor 9s ease-in-out infinite; animation-delay:-2s; }
+.decor-4 .decor-card-thumb { background:linear-gradient(135deg,#F0D4FF,#E0B8FF); }
+@keyframes floatDecor { 0%,100% { transform:rotate(0deg) translateY(0); } 50% { transform:rotate(0deg) translateY(-20px); } }
+.auth-brand { position:absolute; top:24px; left:32px; display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; letter-spacing:-0.02em; color:var(--black); text-decoration:none; z-index:10; }
+.auth-brand-mark { width:28px; height:28px; background:var(--black); border-radius:6px; display:flex; align-items:center; justify-content:center; color:white; font-weight:900; font-size:14px; }
+.auth-card { background:#fff; border-radius:16px; box-shadow:0 30px 80px rgba(0,0,0,0.12),0 8px 24px rgba(0,0,0,0.06); padding:48px 40px 32px; max-width:440px; width:100%; position:relative; z-index:5; border:1px solid rgba(0,0,0,0.04); }
+.auth-title { font-size:32px; font-weight:800; letter-spacing:-0.03em; text-align:center; color:var(--black); margin-bottom:8px; }
+.auth-subtitle { font-size:14px; text-align:center; color:var(--gray-600); margin-bottom:32px; }
+.auth-subtitle a { color:var(--blue); text-decoration:none; font-weight:600; }
+.auth-subtitle a:hover { text-decoration:underline; }
+.auth-subtitle a:hover { text-decoration:underline; }
+.sso-stack { display:flex; flex-direction:column; gap:10px; margin-bottom:24px; }
+/*ANCHOR*/
+.sso-btn { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; height:46px; background:white; border:1px solid var(--gray-200); border-radius:8px; font-family:inherit; font-size:14px; font-weight:600; color:var(--black); cursor:pointer; transition:all 0.15s; }
+.sso-btn:hover { background:var(--gray-50); border-color:var(--gray-400); }
+.divider { display:flex; align-items:center; gap:12px; margin:20px 0; font-size:12px; color:var(--gray-400); font-weight:500; }
+.divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--gray-200); }
+.form-field { margin-bottom:12px; }
+.form-field input { width:100%; height:46px; padding:0 16px; background:white; border:1px solid var(--gray-200); border-radius:8px; font-family:inherit; font-size:14px; color:var(--black); outline:none; transition:all 0.15s; }
+.form-field input:focus { border-color:var(--blue); box-shadow:0 0 0 4px rgba(17,109,255,0.1); }
+.form-field input::placeholder { color:var(--gray-400); }
+.submit-btn { width:100%; height:46px; background:var(--blue); color:white; border:none; border-radius:8px; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s; margin-top:8px; }
+.submit-btn:hover { background:#0052cc; box-shadow:0 8px 20px rgba(17,109,255,0.3); transform:translateY(-1px); }
+.error-msg { display:none; padding:10px 14px; background:#FEE2E2; color:#991B1B; border-radius:8px; font-size:13px; margin-top:12px; font-weight:500; }
+.success-msg { display:none; padding:10px 14px; background:#D1FAE5; color:#065F46; border-radius:8px; font-size:13px; margin-top:12px; font-weight:500; }
+.auth-legal { margin-top:24px; padding-top:24px; border-top:1px solid var(--gray-200); font-size:12px; color:var(--gray-400); text-align:center; line-height:1.6; }
+.auth-legal a { color:var(--gray-600); text-decoration:underline; }
+.auth-recaptcha { position:absolute; bottom:20px; left:0; right:0; text-align:center; font-size:11px; color:var(--gray-400); z-index:4; }
+.dashboard-wrap { display:none; min-height:100vh; padding:40px 32px 80px; }
+.dashboard-container { max-width:1200px; margin:0 auto; }
+.page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:32px; flex-wrap:wrap; }
+.page-header h1 { font-size:40px; font-weight:800; letter-spacing:-0.03em; color:#11233B; margin-bottom:8px; }
+.page-header p { font-size:15px; color:var(--gray-600); }
+.page-actions { display:flex; gap:12px; flex-shrink:0; }
+.btn-pill { display:inline-flex; align-items:center; gap:8px; height:42px; padding:0 22px; border-radius:999px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.15s; border:1px solid transparent; text-decoration:none; white-space:nowrap; }
+.btn-outline { background:white; color:var(--blue); border-color:var(--blue); }
+.btn-outline:hover { background:var(--blue-light); }
+.btn-solid { background:var(--blue); color:white; }
+.btn-solid:hover { background:#0052cc; box-shadow:0 8px 20px rgba(17,109,255,0.3); transform:translateY(-1px); }
+.btn-icon-round { width:42px; padding:0; border-radius:50%; background:white; color:var(--gray-600); border:1px solid var(--gray-200); justify-content:center; }
+.promo-banner { background:linear-gradient(90deg,#E8F5E9 0%,#FFFDE7 40%,#E8F1FF 100%); border-radius:16px; padding:48px 40px; text-align:center; margin-bottom:32px; border:1px solid rgba(0,0,0,0.04); }
+.promo-banner h2 { font-size:26px; font-weight:700; letter-spacing:-0.02em; color:#11233B; margin-bottom:10px; }
+.promo-banner p { font-size:15px; color:var(--gray-600); max-width:620px; margin:0 auto 24px; line-height:1.5; }
+.promo-banner .btn-pill { background:var(--blue); color:white; height:46px; padding:0 28px; font-size:14px; }
+.main-panel { background:white; border-radius:12px; border:1px solid var(--gray-200); overflow:hidden; }
+.panel-toolbar { display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:16px 24px; border-bottom:1px solid var(--gray-200); flex-wrap:wrap; }
+.search-input { display:flex; align-items:center; gap:10px; background:white; border:1px solid var(--gray-200); border-radius:999px; padding:0 18px; height:40px; min-width:240px; }
+.search-input:focus-within { border-color:var(--blue); box-shadow:0 0 0 4px rgba(17,109,255,0.08); }
+.search-input i { color:var(--gray-400); font-size:13px; }
+.search-input input { border:none; outline:none; background:transparent; font-family:inherit; font-size:14px; color:var(--black); width:100%; }
+.view-toggle { display:flex; border:1px solid var(--gray-200); border-radius:8px; overflow:hidden; }
+.view-toggle button { width:38px; height:40px; background:white; border:none; cursor:pointer; color:var(--gray-600); font-size:14px; }
+.view-toggle button.active { background:var(--blue-light); color:var(--blue); }
+.sites-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:24px; padding:28px; }
+.site-card { background:white; border:1px solid var(--gray-200); border-radius:10px; overflow:hidden; cursor:pointer; transition:all 0.25s cubic-bezier(0.16,1,0.3,1); }
+.site-card:hover { transform:translateY(-4px); box-shadow:0 16px 40px rgba(0,0,0,0.08); border-color:var(--blue); }
+.site-thumb { height:160px; background:linear-gradient(135deg,#F0F7FF,#E8F1FF); display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--gray-200); position:relative; overflow:hidden; }
+.site-thumb-placeholder { font-size:40px; color:var(--blue); opacity:0.5; }
+.site-footer { padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.site-title { font-size:15px; font-weight:600; color:#11233B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:2px; }
+.site-status { font-size:12px; color:var(--gray-400); display:flex; align-items:center; gap:4px; }
+.site-menu-btn { width:32px; height:32px; border-radius:50%; background:white; border:1px solid var(--gray-200); color:var(--blue); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.site-menu-btn:hover { background:var(--blue-light); border-color:var(--blue); }
+.empty-state { grid-column:1 / -1; text-align:center; padding:80px 24px; color:var(--gray-400); }
+.empty-state i { font-size:56px; opacity:0.3; margin-bottom:16px; display:block; }
+.empty-state h3 { font-size:18px; font-weight:700; color:#11233B; margin-bottom:8px; }
+.global-loader { position:fixed; inset:0; z-index:9999; background:#F4F7F9; display:none; align-items:center; justify-content:center; flex-direction:column; gap:20px; }
+.global-loader.active { display:flex; }
+.loader-spinner { width:48px; height:48px; border:3px solid var(--gray-200); border-top-color:var(--blue); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loader-text { font-size:14px; font-weight:600; color:var(--gray-600); }
+.menu-item { display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px; border:none; background:none; font-family:inherit; font-size:13px; font-weight:500; color:var(--black); cursor:pointer; border-radius:6px; text-align:left; }
+.menu-item.danger { color:var(--danger); }
+.menu-item:hover { background:var(--gray-50); }
+@media (max-width: 700px) {
+  .auth-card { padding:32px 24px 24px; }
+  .auth-title { font-size:26px; }
+  .decor-card { display:none; }
+  .dashboard-wrap { padding:24px 16px 60px; }
+  .page-header h1 { font-size:30px; }
+  .sites-grid { grid-template-columns:1fr; padding:16px; }
+  .promo-banner { padding:32px 24px; }
+}
+</style>
 </head>
 <body>
-
-    <!-- ===== AUTH SCREEN ===== -->
-    <div id="authScreen" class="login-wrapper">
-        <div class="login-card">
-            <div class="logo-mark" style="width:48px;height:48px;font-size:24px;margin-bottom:24px;">P</div>
-            <h1 class="t-h2" style="margin-bottom:8px;">Welcome to Podi@UM</h1>
-            <p class="t-body" style="margin-bottom:24px;">Event presentation system for Universiti Malaya.</p>
-
-            <div class="auth-tabs">
-                <button class="auth-tab active" id="tabLogin">Sign In</button>
-                <button class="auth-tab" id="tabSignup">Sign Up</button>
-            </div>
-
-            <!-- GOOGLE LOGIN -->
-            <div style="margin-bottom: var(--space-6);">
-                <button type="button" id="googleLoginBtn" class="btn btn-secondary btn-lg btn-full" style="gap:12px;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                    Continue with Google
-                </button>
-
-                <!-- Divider -->
-                <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    margin: var(--space-4) 0 var(--space-6);
-                    color: var(--color-gray-light);
-                    font-size: var(--text-xs);
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.1em;
-                ">
-                    <div style="flex:1;height:1px;background:var(--color-gray-lighter);"></div>
-                    <span>or</span>
-                    <div style="flex:1;height:1px;background:var(--color-gray-lighter);"></div>
-                </div>
-
-                <div class="error-msg" id="googleError" style="margin-top:0;"></div>
-            </div>
-
-            <!-- LOGIN FORM -->
-            <div id="loginForm">
-                <label class="label">Email</label>
-                <input type="email" id="loginEmail" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:16px;" />
-                <label class="label">Password</label>
-                <input type="password" id="loginPassword" class="input input-lg" placeholder="Your password" style="margin-bottom:20px;" />
-                <button class="btn btn-primary btn-lg btn-full" id="loginBtn">Sign In</button>
-                <div class="error-msg" id="loginError"></div>
-            </div>
-
-            <!-- SIGNUP FORM -->
-            <div id="signupForm" style="display:none;">
-                <label class="label">Email</label>
-                <input type="email" id="signupEmail" class="input input-lg" placeholder="you@um.edu.my" style="margin-bottom:16px;" />
-                <label class="label">Password</label>
-                <input type="password" id="signupPassword" class="input input-lg" placeholder="At least 8 characters" style="margin-bottom:16px;" />
-                <label class="label">Confirm Password</label>
-                <input type="password" id="signupConfirm" class="input input-lg" placeholder="Repeat password" style="margin-bottom:20px;" />
-                <button class="btn btn-primary btn-lg btn-full" id="signupBtn">Create Account</button>
-                <div class="error-msg" id="signupError"></div>
-                <div class="success-msg" id="signupSuccess"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== DASHBOARD ===== -->
-    <div id="dashboardContent" style="display:none;">
-        <div class="topbar">
-            <div class="container" style="display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <div class="logo-mark">P</div>
-                    <div>
-                        <div style="font-weight:700;color:var(--color-navy);font-size:17px;">Podi@UM</div>
-                        <div style="font-size:12px;color:var(--color-gray-light);" id="userEmail">—</div>
-                    </div>
-                </div>
-                <button class="btn btn-secondary" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
-            </div>
-        </div>
-
-        <div class="container">
-            <div class="hero">
-                <h1>Your Event Sites</h1>
-                <p>Design, build, and publish branded presentations for any event.</p>
-                <button class="btn btn-lg" id="heroCreateBtn" style="background:#fff;color:var(--color-brand);margin-top:24px;">
-                    <i class="fas fa-plus"></i> Create New Site
-                </button>
-            </div>
-
-            <div style="display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--color-gray-lighter);border-radius:10px;padding:0 16px;height:40px;flex:1;min-width:240px;max-width:400px;">
-                    <i class="fas fa-search" style="color:var(--color-gray-light);"></i>
-                    <input type="text" id="searchInput" placeholder="Search your sites…" style="border:none;outline:none;flex:1;font-family:inherit;font-size:14px;background:transparent;" />
-                </div>
-                <button class="btn btn-primary" id="createSiteBtn"><i class="fas fa-plus"></i> New Site</button>
-            </div>
-
-            <div class="project-grid" id="projectGrid"></div>
-        </div>
-    </div>
-
-    <script>
-        // ================================================================
-        // CONFIG
-        // ================================================================
-        const CLOUDINARY_CLOUD_NAME = 'ulww3nal';
-        const CLOUDINARY_UPLOAD_PRESET = 'audio_uploads';
-
-        // ================================================================
-        // STATE
-        // ================================================================
-        let session = null;
-        let user = null;
-        let sites = [];
-
-        // ================================================================
-        // DOM REFS
-        // ================================================================
-        const authScreen = document.getElementById('authScreen');
-        const dashboardContent = document.getElementById('dashboardContent');
-
-        // ================================================================
-        // UI HELPERS
-        // ================================================================
-        function showAuth() {
-            authScreen.style.display = 'flex';
-            dashboardContent.style.display = 'none';
-        }
-
-        function showDashboard() {
-            authScreen.style.display = 'none';
-            dashboardContent.style.display = 'block';
-        }
-
-        function showLoading(message = 'Loading…') {
-            authScreen.style.display = 'none';
-            dashboardContent.style.display = 'none';
-
-            let loader = document.getElementById('globalLoader');
-            if (!loader) {
-                loader = document.createElement('div');
-                loader.id = 'globalLoader';
-                loader.style.cssText = `
-                    position: fixed; inset: 0; z-index: 9998;
-                    background: linear-gradient(135deg, #F8F9FA 0%, #E6F7FA 100%);
-                    display: flex; align-items: center; justify-content: center;
-                    flex-direction: column; gap: 20px;
-                `;
-                document.body.appendChild(loader);
-            }
-            loader.style.display = 'flex';
-            loader.innerHTML = `
-                <div style="width:48px;height:48px;border:3px solid #E5E7EB;border-top-color:#0090A8;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-                <div style="font-family:inherit;font-size:14px;font-weight:600;color:#6B7280;">${message}</div>
-                <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-            `;
-        }
-
-        function hideLoading() {
-            const loader = document.getElementById('globalLoader');
-            if (loader) loader.style.display = 'none';
-        }
-
-        // ================================================================
-        // SESSION HELPERS
-        // ================================================================
-        function readSession() {
-            try {
-                const raw = localStorage.getItem('podiumSession');
-                if (!raw) return null;
-                const s = JSON.parse(raw);
-                if (!s?.access_token) return null;
-                return s;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function readUser() {
-            try {
-                const raw = localStorage.getItem('podiumUser');
-                return raw ? JSON.parse(raw) : null;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function logout(redirect = false) {
-            localStorage.removeItem('podiumSession');
-            localStorage.removeItem('podiumUser');
-            session = null;
-            user = null;
-            sites = [];
-            if (redirect) location.reload();
-            else showAuth();
-        }
-
-        // ================================================================
-        // API HELPER — with cache busting
-        // ================================================================
-        async function apiFetch(endpoint, options = {}) {
-            // Add cache-busting param
-            const sep = endpoint.includes('?') ? '&' : '?';
-            const url = endpoint + sep + '_t=' + Date.now();
-
-            const headers = { 'Content-Type': 'application/json', ...options.headers };
-            if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
-
-            const resp = await fetch(url, {
-                ...options,
-                headers,
-                cache: 'no-store',
-                credentials: 'omit',
-            });
-
-            if (resp.status === 401) {
-                const err = new Error('Session expired');
-                err.status = 401;
-                throw err;
-            }
-
-            const ct = resp.headers.get('content-type') || '';
-            if (!ct.includes('application/json')) {
-                throw new Error(`Server returned non-JSON (${resp.status})`);
-            }
-
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || `Request failed (${resp.status})`);
-            return data;
-        }
-
-        // ================================================================
-        // TAB SWITCHING
-        // ================================================================
-        const tabLogin = document.getElementById('tabLogin');
-        const tabSignup = document.getElementById('tabSignup');
-        const loginForm = document.getElementById('loginForm');
-        const signupForm = document.getElementById('signupForm');
-
-        tabLogin.addEventListener('click', () => {
-            tabLogin.classList.add('active');
-            tabSignup.classList.remove('active');
-            loginForm.style.display = 'block';
-            signupForm.style.display = 'none';
-        });
-        tabSignup.addEventListener('click', () => {
-            tabSignup.classList.add('active');
-            tabLogin.classList.remove('active');
-            signupForm.style.display = 'block';
-            loginForm.style.display = 'none';
-        });
-
-        // ================================================================
-        // LOGIN
-        // ================================================================
-        async function performLogin(email, password) {
-            const errEl = document.getElementById('loginError');
-            errEl.style.display = 'none';
-            try {
-                const resp = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
-                });
-                const data = await resp.json();
-                if (!resp.ok) {
-                    errEl.textContent = data.error || 'Login failed';
-                    errEl.style.display = 'block';
-                    return false;
-                }
-                localStorage.setItem('podiumSession', JSON.stringify(data.session));
-                localStorage.setItem('podiumUser', JSON.stringify(data.user));
-                session = data.session;
-                user = data.user;
-                return true;
-            } catch (e) {
-                errEl.textContent = 'Network error: ' + e.message;
-                errEl.style.display = 'block';
-                return false;
-            }
-        }
-
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            if (!email || !password) {
-                const errEl = document.getElementById('loginError');
-                errEl.textContent = 'Please enter email and password';
-                errEl.style.display = 'block';
-                return;
-            }
-            showLoading('Signing you in…');
-            const ok = await performLogin(email, password);
-            if (ok) {
-                await loadSitesAndShow();
-            } else {
-                hideLoading();
-                showAuth();
-            }
-        });
-
-        document.getElementById('loginPassword').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('loginBtn').click();
-        });
-
-        // ================================================================
-        // GOOGLE LOGIN
-        // ================================================================
-        let googleSignInAvailable = true;   // confirmed once /api/config resolves
-
-        function renderGoogleBtn(busy) {
-            const btn = document.getElementById('googleLoginBtn');
-            if (!btn) return;
-            if (busy) {
-                if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Redirecting to Google…';
-            } else if (btn.dataset.label) {
-                btn.innerHTML = btn.dataset.label;
-            }
-            btn.disabled = busy || !googleSignInAvailable;
-            btn.title = googleSignInAvailable ? '' : 'Google sign-in is not configured on this server';
-        }
-
-        async function signInWithGoogle() {
-            const errEl = document.getElementById('googleError');
-            errEl.style.display = 'none';
-
-            try {
-                const client = await window.supabaseReady;
-                if (!client) throw new Error('Google sign-in is not configured on this server.');
-
-                renderGoogleBtn(true);
-
-                // Supabase redirects the browser to Google, so nothing after
-                // this call runs — the return trip is handled by auth-callback.html.
-                const { error } = await client.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: window.location.origin + '/auth-callback.html',
-                        queryParams: {
-                            access_type: 'offline',
-                            prompt: 'consent',
-                        },
-                    },
-                });
-                if (error) throw error;
-            } catch (e) {
-                console.error('Google sign-in error:', e);
-                renderGoogleBtn(false);
-                errEl.textContent = 'Google sign-in failed: ' + e.message;
-                errEl.style.display = 'block';
-            }
-        }
-
-        document.getElementById('googleLoginBtn').addEventListener('click', signInWithGoogle);
-
-        // Disable the button if the server has no Supabase credentials
-        (async function checkGoogleSignIn() {
-            const client = await window.supabaseReady;
-            googleSignInAvailable = !!client;
-            renderGoogleBtn(false);
-        })();
-
-        // ================================================================
-        // SIGNUP
-        // ================================================================
-        document.getElementById('signupBtn').addEventListener('click', async () => {
-            const email = document.getElementById('signupEmail').value.trim();
-            const password = document.getElementById('signupPassword').value;
-            const confirm = document.getElementById('signupConfirm').value;
-            const errEl = document.getElementById('signupError');
-            const sucEl = document.getElementById('signupSuccess');
-            errEl.style.display = 'none';
-            sucEl.style.display = 'none';
-
-            if (!email || !password) {
-                errEl.textContent = 'Email and password are required';
-                errEl.style.display = 'block';
-                return;
-            }
-            if (password.length < 8) {
-                errEl.textContent = 'Password must be at least 8 characters';
-                errEl.style.display = 'block';
-                return;
-            }
-            if (password !== confirm) {
-                errEl.textContent = 'Passwords do not match';
-                errEl.style.display = 'block';
-                return;
-            }
-
-            try {
-                const resp = await fetch('/api/signup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
-                });
-                const data = await resp.json();
-
-                if (!resp.ok) {
-                    errEl.textContent = data.error || 'Signup failed';
-                    errEl.style.display = 'block';
-                    return;
-                }
-
-                // If a session came back, user is logged in immediately
-                if (data.session) {
-                    session = data.session;
-                    user = data.user;
-                    localStorage.setItem('podiumSession', JSON.stringify(session));
-                    localStorage.setItem('podiumUser', JSON.stringify(user));
-                    sucEl.textContent = '✅ Account created! Logging you in…';
-                    sucEl.style.display = 'block';
-
-                    showLoading('Setting up your account…');
-                    setTimeout(async () => { await loadSitesAndShow(); }, 500);
-                } else {
-                    sucEl.textContent = data.message || '✅ Check your email to confirm your account.';
-                    sucEl.style.display = 'block';
-                    setTimeout(() => {
-                        tabLogin.click();
-                        document.getElementById('loginEmail').value = email;
-                    }, 2000);
-                }
-            } catch (e) {
-                errEl.textContent = 'Network error: ' + e.message;
-                errEl.style.display = 'block';
-            }
-        });
-
-        document.getElementById('signupConfirm').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('signupBtn').click();
-        });
-
-        // ================================================================
-        // LOGOUT
-        // ================================================================
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            logout(true);
-        });
-
-        // ================================================================
-        // SITES — RETRY LOGIC
-        // ================================================================
-        async function fetchSites(retries = 2) {
-            for (let attempt = 1; attempt <= retries + 1; attempt++) {
-                try {
-                    console.log(`🔄 Fetching sites (attempt ${attempt})...`);
-                    const data = await apiFetch('/api/sites');
-                    const list = Array.isArray(data) ? data : [];
-                    console.log(`✓ Attempt ${attempt} returned ${list.length} sites`);
-
-                    // If we got sites, great — return
-                    if (list.length > 0) return list;
-
-                    // If empty on first try, wait and retry
-                    if (attempt <= retries) {
-                        console.warn(`⚠️ Empty result on attempt ${attempt}, retrying in 500ms...`);
-                        await new Promise(r => setTimeout(r, 500));
-                    } else {
-                        // Last attempt also empty — accept it
-                        return list;
-                    }
-                } catch (e) {
-                    if (e.status === 401) throw e; // Don't retry on auth error
-                    console.warn(`❌ Attempt ${attempt} failed:`, e.message);
-                    if (attempt > retries) throw e;
-                    await new Promise(r => setTimeout(r, 500));
-                }
-            }
-            return [];
-        }
-
-        async function loadSitesAndShow() {
-            showLoading('Loading your sites…');
-            try {
-                sites = await fetchSites(2);
-                console.log(`✅ Final sites count: ${sites.length}`);
-
-                // Update user email
-                if (user?.email) {
-                    const emailEl = document.getElementById('userEmail');
-                    if (emailEl) emailEl.textContent = user.email;
-                }
-
-                hideLoading();
-                showDashboard();
-
-                // Small delay to ensure DOM is fully rendered before drawing cards
-                setTimeout(() => renderSites(), 50);
-            } catch (e) {
-                console.error('❌ Failed to load sites:', e);
-                hideLoading();
-
-                if (e.status === 401) {
-                    logout();
-                    const errEl = document.getElementById('loginError');
-                    errEl.textContent = 'Your session expired. Please log in again.';
-                    errEl.style.display = 'block';
-                } else {
-                    logout();
-                    const errEl = document.getElementById('loginError');
-                    errEl.textContent = 'Could not load sites: ' + e.message;
-                    errEl.style.display = 'block';
-                }
-            }
-        }
-
-        function renderSites(search = '') {
-            const grid = document.getElementById('projectGrid');
-            if (!grid) {
-                console.error('❌ projectGrid not found in DOM');
-                return;
-            }
-
-            console.log(`🎨 Rendering ${sites.length} sites`);
-            let filtered = [...sites];
-            if (search.trim()) {
-                const q = search.trim().toLowerCase();
-                filtered = filtered.filter(s => s.name.toLowerCase().includes(q));
-            }
-            filtered.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-
-            if (filtered.length === 0) {
-                grid.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-folder-open"></i>
-                        <h3 style="font-size:18px;font-weight:600;margin-bottom:8px;color:#11233B;">No sites yet</h3>
-                        <p>Click <strong>Create New Site</strong> to get started.</p>
-                        <button onclick="location.reload()" style="margin-top:16px;padding:8px 20px;background:#0090A8;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
-                            🔄 Refresh
-                        </button>
-                    </div>`;
-                return;
-            }
-
-            grid.innerHTML = filtered.map(site => `
-                <div class="project-card" data-id="${site.id}">
-                    <div class="project-preview" data-preview-id="${site.id}">
-                        <i class="fas fa-file-alt" style="font-size:40px;"></i>
-                    </div>
-                    <div class="project-body">
-                        <div class="project-title">${escapeHtml(site.name)}</div>
-                        <div class="project-meta">
-                            <i class="fas fa-clock"></i>
-                            Updated ${new Date(site.updated_at).toLocaleDateString()}
-                        </div>
-                        <div class="project-actions">
-                            <button class="btn btn-sm btn-secondary launch-btn" data-id="${site.id}">
-                                <i class="fas fa-external-link-alt"></i> Launch
-                            </button>
-                            <button class="btn btn-sm btn-ghost edit-btn">
-                                <i class="fas fa-pen"></i>
-                            </button>
-                            <button class="btn btn-sm btn-ghost delete-btn" style="color:#EF4444;">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-            grid.querySelectorAll('.project-card').forEach(card => {
-                const id = card.dataset.id;
-                card.addEventListener('click', (e) => {
-                    if (!e.target.closest('button')) window.location.href = `builder.html?site=${id}`;
-                });
-                card.querySelector('.edit-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    window.location.href = `builder.html?site=${id}`;
-                });
-                card.querySelector('.launch-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    window.open(`viewer.html?site=${id}`, '_blank');
-                });
-                card.querySelector('.delete-btn').addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!confirm('Delete this site?')) return;
-                    try {
-                        await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
-                        sites = sites.filter(s => s.id !== id);
-                        renderSites();
-                    } catch (err) {
-                        alert('Delete failed: ' + err.message);
-                    }
-                });
-                renderThumbnail(id);
-            });
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
-
-        async function renderThumbnail(siteId) {
-            try {
-                const site = await apiFetch(`/api/sites/${siteId}`);
-                const el = document.querySelector(`[data-preview-id="${siteId}"]`);
-                if (!el || !site.data) return;
-                const d = site.data;
-
-                el.innerHTML = `
-                    <div style="width:100%;height:100%;background:${d.bgColor || '#F8F9FA'};display:flex;flex-direction:column;align-items:center;padding:12px;gap:6px;overflow:hidden;">
-                        ${d.logoUrl ? `<img src="${d.logoUrl}" style="max-height:24px;max-width:80%;object-fit:contain;" />` : ''}
-                        <div style="font-weight:700;color:#11233B;font-size:11px;text-align:center;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(site.name)}</div>
-                        <div style="width:85%;height:60%;background:#fff;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:3px;padding:6px;overflow:hidden;">
-                            ${(d.components || []).slice(0, 4).map(c => {
-                                if (c.type === 'SoundButton') return `<div style="background:#11233B;height:8px;border-radius:4px;"></div>`;
-                                if (c.type === 'Playlist') return `<div style="background:#0090A8;height:8px;border-radius:4px;"></div>`;
-                                if (c.type === 'Divider') return `<div style="background:#D1D5DB;height:1px;margin:2px 0;"></div>`;
-                                return `<div style="background:#E5E7EB;height:8px;border-radius:4px;"></div>`;
-                            }).join('')}
-                        </div>
-                    </div>
-                `;
-            } catch (e) {}
-        }
-
-        // ================================================================
-        // CREATE SITE
-        // ================================================================
-        async function createNewSite() {
-            try {
-                const site = await apiFetch('/api/sites', {
-                    method: 'POST',
-                    body: JSON.stringify({ name: 'Untitled Site' }),
-                });
-                window.location.href = `builder.html?site=${site.id}`;
-            } catch (e) {
-                alert('Failed to create site: ' + e.message);
-            }
-        }
-
-        document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
-        document.getElementById('heroCreateBtn').addEventListener('click', createNewSite);
-        document.getElementById('searchInput').addEventListener('input', (e) => renderSites(e.target.value));
-
-        // ================================================================
-        // REFRESH BUTTON — always visible in topbar
-        // ================================================================
-        function addRefreshButton() {
-            const topbar = document.querySelector('#dashboardContent .topbar .container > div:last-child');
-            if (!topbar) return;
-            if (document.getElementById('refreshSitesBtn')) return;
-
-            const btn = document.createElement('button');
-            btn.id = 'refreshSitesBtn';
-            btn.className = 'btn btn-secondary';
-            btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
-            btn.style.marginRight = '8px';
-            btn.onclick = () => loadSitesAndShow();
-            topbar.insertBefore(btn, topbar.firstChild);
-        }
-
-        // ================================================================
-        // BOOT — with retry and error handling
-        // ================================================================
-        (async function boot() {
-            console.log('🚀 Boot starting...');
-
-            showLoading('Checking session…');
-            await new Promise(r => setTimeout(r, 100));
-
-            const sess = readSession();
-            const cachedUser = readUser();
-
-            if (!sess?.access_token) {
-                console.log('❌ No session — showing login');
-                hideLoading();
-                showAuth();
-                return;
-            }
-
-            console.log('✓ Session found');
-            session = sess;
-            user = cachedUser;
-
-            try {
-                // Step 1: Verify token
-                console.log('🔄 Verifying token...');
-                const verifyResp = await fetch('/api/verify?_t=' + Date.now(), {
-                    headers: { 'Authorization': 'Bearer ' + sess.access_token },
-                    cache: 'no-store',
-                });
-                if (!verifyResp.ok) {
-                    console.log('❌ Token invalid');
-                    logout();
-                    hideLoading();
-                    return;
-                }
-
-                const verifyData = await verifyResp.json();
-                if (verifyData.user) {
-                    user = verifyData.user;
-                    localStorage.setItem('podiumUser', JSON.stringify(user));
-                }
-                console.log('✓ Token verified');
-
-                // Step 2: Load sites with retry
-                sites = await fetchSites(2);
-
-                // Step 3: Show dashboard
-                if (user?.email) {
-                    const emailEl = document.getElementById('userEmail');
-                    if (emailEl) emailEl.textContent = user.email;
-                }
-
-                hideLoading();
-                showDashboard();
-                addRefreshButton();
-
-                // Wait for DOM update then render
-                await new Promise(r => setTimeout(r, 100));
-                renderSites();
-
-                console.log('✅ Boot complete — sites:', sites.length);
-            } catch (e) {
-                console.error('❌ Boot error:', e);
-                logout();
-                hideLoading();
-
-                const errEl = document.getElementById('loginError');
-                if (errEl) {
-                    errEl.textContent = 'Session error: ' + e.message;
-                    errEl.style.display = 'block';
-                }
-            }
-        })();
-    </script>
+<div id="globalLoader" class="global-loader"><div class="loader-spinner"></div><div class="loader-text" id="loaderText">Loading…</div></div>
+<div id="authScreen" class="auth-screen">
+<a href="/" class="auth-brand"><div class="auth-brand-mark">P</div>Podi@UM</a>
+<div class="auth-decor">
+<div class="decor-card decor-1"><div class="decor-card-thumb"></div></div>
+<div class="decor-card decor-2"><div class="decor-card-thumb"></div></div>
+<div class="decor-card decor-3"><div class="decor-card-thumb"></div></div>
+<div class="decor-card decor-4"><div class="decor-card-thumb"></div></div>
+</div>
+<div class="auth-card">
+<div id="loginView">
+<h1 class="auth-title">Log in</h1>
+<p class="auth-subtitle">Don&#39;t have an account? <a href="#" id="switchToSignup">Sign up</a></p>
+<div class="sso-stack">
+<button class="sso-btn" id="googleLoginBtn"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google</button>
+<button class="sso-btn" id="facebookLoginBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>Continue with Facebook</button>
+<button class="sso-btn" id="appleLoginBtn">Continue with Apple</button>
+</div>
+<div class="divider">or</div>
+<div class="form-field"><input type="email" id="loginEmail" placeholder="Email" autocomplete="email" /></div>
+<div class="form-field"><input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" /></div>
+<button class="submit-btn" id="loginBtn">Continue with Email</button>
+<div class="error-msg" id="loginError"></div>
+</div>
+<div id="signupView" style="display:none;">
+<h1 class="auth-title">Sign up</h1>
+<p class="auth-subtitle">Already have an account? <a href="#" id="switchToLogin">Log in</a></p>
+<div class="form-field"><input type="email" id="signupEmail" placeholder="Email" autocomplete="email" /></div>
+<div class="form-field"><input type="password" id="signupPassword" placeholder="Password (min 8 characters)" autocomplete="new-password" /></div>
+<div class="form-field"><input type="password" id="signupConfirm" placeholder="Confirm password" autocomplete="new-password" /></div>
+<button class="submit-btn" id="signupBtn">Create Account</button>
+<div class="error-msg" id="signupError"></div>
+<div class="success-msg" id="signupSuccess"></div>
+</div>
+<div class="auth-legal">By signing up, you agree to our <a href="/terms.html">Terms of Use</a> and acknowledge you&#39;ve read our <a href="/privacy.html">Privacy Policy</a>.</div>
+</div>
+<div class="auth-recaptcha">This site is protected by reCAPTCHA Enterprise.</div>
+</div>
+<div id="dashboardContent" class="dashboard-wrap">
+<div class="dashboard-container">
+<div class="page-header">
+<div><h1>Sites</h1><p>View and manage all your event pages in one place.</p></div>
+<div class="page-actions">
+<button class="btn-pill btn-outline" id="createFolderBtn"><i class="fas fa-folder-plus"></i> Create New Folder</button>
+<button class="btn-pill btn-solid" id="createSiteBtn"><i class="fas fa-plus"></i> Create New Site</button>
+<button class="btn-pill btn-icon-round" id="logoutBtn" title="Logout"><i class="fas fa-sign-out-alt"></i></button>
+</div>
+</div>
+<div class="promo-banner">
+<h2>Start creating something new</h2>
+<p>Build your next event site with our hybrid editor that blends familiar drag-and-drop controls with built-in AI support.</p>
+<button class="btn-pill" id="heroCreateBtn"><i class="fas fa-sparkles"></i> Create New Site</button>
+</div>
+<div class="main-panel">
+<div class="panel-toolbar">
+<div class="view-toggle"><button class="active" title="Grid view"><i class="fas fa-th-large"></i></button><button title="List view"><i class="fas fa-list"></i></button></div>
+<div class="search-input"><i class="fas fa-search"></i><input type="text" id="searchInput" placeholder="Search…" /></div>
+<button class="btn-pill btn-outline" id="filterBtn"><i class="fas fa-filter"></i> Filter</button>
+</div>
+<div class="sites-grid" id="projectGrid"></div>
+</div>
+</div>
+</div>
+<script>
+let session = null; let user = null; let sites = [];
+const authScreen = document.getElementById('authScreen');
+const dashboardContent = document.getElementById('dashboardContent');
+const globalLoader = document.getElementById('globalLoader');
+const loaderText = document.getElementById('loaderText');
+function showAuth() { authScreen.style.display = 'flex'; dashboardContent.style.display = 'none'; }
+function showDashboard() { authScreen.style.display = 'none'; dashboardContent.style.display = 'block'; }
+function showLoading(msg) { authScreen.style.display = 'none'; dashboardContent.style.display = 'none'; globalLoader.classList.add('active'); loaderText.textContent = msg || 'Loading…'; }
+function hideLoading() { globalLoader.classList.remove('active'); }
+function readSession() { try { const raw = localStorage.getItem('podiumSession'); if (!raw) return null; const s = JSON.parse(raw); return s && s.access_token ? s : null; } catch (e) { return null; } }
+function readUser() { try { const raw = localStorage.getItem('podiumUser'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
+function logout(redir) { localStorage.removeItem('podiumSession'); localStorage.removeItem('podiumUser'); session = null; user = null; sites = []; if (redir) location.reload(); else showAuth(); }
+async function apiFetch(endpoint, options) {
+  options = options || {};
+  const sep = endpoint.indexOf('?') >= 0 ? '&' : '?';
+  const url = endpoint + sep + '_t=' + Date.now();
+  const headers = { 'Content-Type': 'application/json' };
+  if (options.headers) { for (const k in options.headers) headers[k] = options.headers[k]; }
+  if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+  const resp = await fetch(url, { method: options.method || 'GET', headers: headers, body: options.body, cache: 'no-store' });
+  if (resp.status === 401) { const err = new Error('Session expired'); err.status = 401; throw err; }
+  const ct = resp.headers.get('content-type') || '';
+  if (ct.indexOf('application/json') < 0) throw new Error('Server returned non-JSON (' + resp.status + ')');
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || ('Request failed (' + resp.status + ')'));
+  return data;
+}
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+document.getElementById('switchToSignup').addEventListener('click', function(e) { e.preventDefault(); document.getElementById('loginView').style.display = 'none'; document.getElementById('signupView').style.display = 'block'; });
+document.getElementById('switchToLogin').addEventListener('click', function(e) { e.preventDefault(); document.getElementById('signupView').style.display = 'none'; document.getElementById('loginView').style.display = 'block'; });
+async function performLogin(email, password) {
+  const errEl = document.getElementById('loginError'); errEl.style.display = 'none';
+  try {
+    const resp = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, password: password }) });
+    const data = await resp.json();
+    if (!resp.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return false; }
+    localStorage.setItem('podiumSession', JSON.stringify(data.session));
+    localStorage.setItem('podiumUser', JSON.stringify(data.user));
+    session = data.session; user = data.user; return true;
+  } catch (e) { errEl.textContent = 'Network error: ' + e.message; errEl.style.display = 'block'; return false; }
+}
+document.getElementById('loginBtn').addEventListener('click', async function() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password) { const errEl = document.getElementById('loginError'); errEl.textContent = 'Please enter email and password'; errEl.style.display = 'block'; return; }
+  showLoading('Signing you in…');
+  const ok = await performLogin(email, password);
+  if (ok) { await loadSitesAndShow(); } else { hideLoading(); showAuth(); }
+});
+document.getElementById('signupBtn').addEventListener('click', async function() {
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  const confirm = document.getElementById('signupConfirm').value;
+  const errEl = document.getElementById('signupError'); const sucEl = document.getElementById('signupSuccess');
+  errEl.style.display = 'none'; sucEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'Email and password are required'; errEl.style.display = 'block'; return; }
+  if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters'; errEl.style.display = 'block'; return; }
+  if (password !== confirm) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
+  try {
+    const resp = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, password: password }) });
+    const data = await resp.json();
+    if (!resp.ok) { errEl.textContent = data.error || 'Signup failed'; errEl.style.display = 'block'; return; }
+    if (data.session) {
+      localStorage.setItem('podiumSession', JSON.stringify(data.session));
+      localStorage.setItem('podiumUser', JSON.stringify(data.user));
+      session = data.session; user = data.user;
+      sucEl.textContent = 'Account created! Logging you in…'; sucEl.style.display = 'block';
+      showLoading('Setting up your account…');
+      setTimeout(async function() { await loadSitesAndShow(); }, 500);
+    } else { sucEl.textContent = data.message || 'Check your email to confirm your account.'; sucEl.style.display = 'block'; }
+  } catch (e) { errEl.textContent = 'Network error: ' + e.message; errEl.style.display = 'block'; }
+});
+document.getElementById('logoutBtn').addEventListener('click', function() { logout(true); });
+async function fetchSites(retries) {
+  retries = retries || 2;
+  for (let attempt = 1; attempt <= retries + 1; attempt++) {
+    try {
+      const data = await apiFetch('/api/sites');
+      const list = Array.isArray(data) ? data : [];
+      if (list.length > 0) return list;
+      if (attempt <= retries) { await new Promise(function(r) { setTimeout(r, 500); }); } else { return list; }
+    } catch (e) { if (e.status === 401) throw e; if (attempt > retries) throw e; await new Promise(function(r) { setTimeout(r, 500); }); }
+  }
+  return [];
+}
+async function loadSitesAndShow() {
+  showLoading('Loading your sites…');
+  try { sites = await fetchSites(2); hideLoading(); showDashboard(); setTimeout(function() { renderSites(); }, 50); }
+  catch (e) { hideLoading(); logout(); const errEl = document.getElementById('loginError'); errEl.textContent = e.status === 401 ? 'Session expired. Please log in again.' : 'Could not load sites: ' + e.message; errEl.style.display = 'block'; }
+}
+function renderSites(search) {
+  search = search || '';
+  const grid = document.getElementById('projectGrid');
+  if (!grid) return;
+  let filtered = sites.slice();
+  if (search.trim()) { const q = search.trim().toLowerCase(); filtered = filtered.filter(function(s) { return (s.name || '').toLowerCase().indexOf(q) >= 0; }); }
+  filtered.sort(function(a, b) { return new Date(b.updated_at) - new Date(a.updated_at); });
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No sites yet</h3><p>Click <strong>Create New Site</strong> to get started.</p></div>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < filtered.length; i++) {
+    const s = filtered[i];
+    const d = new Date(s.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    html += '<div class="site-card" data-id="' + s.id + '"><div class="site-thumb" data-preview-id="' + s.id + '"><i class="fas fa-file-alt site-thumb-placeholder"></i></div><div class="site-footer"><div><div class="site-title">' + escapeHtml(s.name) + '</div><div class="site-status"><i class="fas fa-clock"></i> Updated ' + d + '</div></div><button class="site-menu-btn menu-btn" data-id="' + s.id + '" title="More options"><i class="fas fa-ellipsis-h"></i></button></div></div>';
+  }
+  grid.innerHTML = html;
+  const cards = grid.querySelectorAll('.site-card');
+  for (let i = 0; i < cards.length; i++) {
+    (function(card) {
+      const id = card.getAttribute('data-id');
+      card.addEventListener('click', function(e) { if (e.target.closest('.menu-btn')) return; window.location.href = 'builder.html?site=' + id; });
+      renderThumbnail(id);
+    })(cards[i]);
+  }
+  const menus = grid.querySelectorAll('.menu-btn');
+  for (let i = 0; i < menus.length; i++) {
+    (function(btn) {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); showSiteMenu(e, btn.getAttribute('data-id')); });
+    })(menus[i]);
+  }
+}
+function showSiteMenu(event, id) {
+  const old = document.querySelectorAll('.site-context-menu');
+  for (let i = 0; i < old.length; i++) old[i].remove();
+  const r = event.target.getBoundingClientRect ? event.target.getBoundingClientRect() : { bottom: 200, right: 300 };
+  const menu = document.createElement('div');
+  menu.className = 'site-context-menu';
+  menu.setAttribute('style', 'position:fixed;top:' + (r.bottom + 6) + 'px;left:' + Math.max(8, r.right - 180) + 'px;background:white;border:1px solid #E4E6EB;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.12);padding:6px;z-index:9999;min-width:180px;');
+  menu.innerHTML = '<button class="menu-item" data-action="edit"><i class="fas fa-pen"></i> Edit</button><button class="menu-item" data-action="launch"><i class="fas fa-external-link-alt"></i> Launch presenter</button><button class="menu-item" data-action="duplicate"><i class="fas fa-copy"></i> Duplicate</button><div style="height:1px;background:#E4E6EB;margin:4px 0;"></div><button class="menu-item danger" data-action="delete"><i class="fas fa-trash"></i> Delete</button>';
+  document.body.appendChild(menu);
+  const items = menu.querySelectorAll('.menu-item');
+  for (let i = 0; i < items.length; i++) { (function(btn) { btn.addEventListener('click', function() { handleMenuAction(btn.getAttribute('data-action'), id); menu.remove(); }); })(items[i]); }
+  setTimeout(function() { document.addEventListener('click', function handler(e) { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', handler); } }); }, 10);
+}
+async function handleMenuAction(action, id) {
+  if (action === 'edit') { window.location.href = 'builder.html?site=' + id; return; }
+  if (action === 'launch') { window.open('viewer.html?site=' + id, '_blank'); return; }
+  if (action === 'duplicate') {
+    let found = null;
+    for (let j = 0; j < sites.length; j++) { if (sites[j].id === id) found = sites[j]; }
+    if (!found) return;
+    try {
+      const created = await apiFetch('/api/sites', { method: 'POST', body: JSON.stringify({ name: found.name + ' (copy)' }) });
+      if (found.data) { await apiFetch('/api/sites/' + created.id, { method: 'PUT', body: JSON.stringify({ name: found.name + ' (copy)', data: found.data }) }); }
+      await loadSitesAndShow();
+    } catch (e) { alert('Duplicate failed: ' + e.message); }
+    return;
+  }
+  if (action === 'delete') {
+    if (!confirm('Delete this site?')) return;
+    try { await apiFetch('/api/sites/' + id, { method: 'DELETE' }); sites = sites.filter(function(s) { return s.id !== id; }); renderSites(); }
+    catch (e) { alert('Delete failed: ' + e.message); }
+  }
+}
+/*PART2*/
+async function renderThumbnail(siteId) {
+  try {
+    const site = await apiFetch('/api/sites/' + siteId);
+    const el = document.querySelector('[data-preview-id="' + siteId + '"]');
+    if (!el || !site.data) return;
+    const d = site.data;
+    let blocks = '';
+    const comps = d.components || [];
+    for (let i = 0; i < Math.min(4, comps.length); i++) {
+      const c = comps[i];
+      if (c.type === 'SoundButton') blocks += '<div style="background:#11233B;height:9px;border-radius:4px;"></div>';
+      else if (c.type === 'Playlist') blocks += '<div style="background:#116DFF;height:9px;border-radius:4px;"></div>';
+      else if (c.type === 'Divider') blocks += '<div style="background:#D1D5DB;height:1px;margin:2px 0;"></div>';
+      else blocks += '<div style="background:#E5E7EB;height:9px;border-radius:4px;"></div>';
+    }
+    el.innerHTML = '<div style="width:100%;height:100%;background:' + (d.bgColor || '#F8F9FA') + ';display:flex;flex-direction:column;align-items:center;padding:16px;gap:8px;overflow:hidden;"><div style="font-weight:700;color:#11233B;font-size:12px;">' + escapeHtml(site.name) + '</div><div style="width:85%;flex:1;background:#fff;border-radius:6px;display:flex;flex-direction:column;gap:4px;padding:8px;overflow:hidden;">' + blocks + '</div></div>';
+  } catch (e) {}
+}
+async function createNewSite() {
+  try {
+    const site = await apiFetch('/api/sites', { method: 'POST', body: JSON.stringify({ name: 'Untitled Site' }) });
+    window.location.href = 'builder.html?site=' + site.id;
+  } catch (e) { alert('Failed to create site: ' + e.message); }
+}
+document.getElementById('createSiteBtn').addEventListener('click', createNewSite);
+document.getElementById('heroCreateBtn').addEventListener('click', createNewSite);
+document.getElementById('createFolderBtn').addEventListener('click', function() { alert('Folders coming soon!'); });
+document.getElementById('filterBtn').addEventListener('click', function() { alert('Filters coming soon!'); });
+document.getElementById('searchInput').addEventListener('input', function(e) { renderSites(e.target.value); });
+/*PART3*/
+const viewBtns = document.querySelectorAll('.view-toggle button');
+for (let i = 0; i < viewBtns.length; i++) {
+  (function(btn) {
+    btn.addEventListener('click', function() {
+      for (let j = 0; j < viewBtns.length; j++) viewBtns[j].classList.remove('active');
+      btn.classList.add('active');
+      const grid = document.getElementById('projectGrid');
+      grid.style.gridTemplateColumns = btn.title === 'List view' ? '1fr' : 'repeat(auto-fill,minmax(280px,1fr))';
+    });
+  })(viewBtns[i]);
+}
+document.getElementById('googleLoginBtn').addEventListener('click', async function() {
+  try {
+    const client = await window.supabaseReady;
+    if (!client) { alert('Google sign-in is not configured yet.'); return; }
+    const redirect = window.location.origin + '/auth-callback.html';
+    const res = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: redirect } });
+    if (res.error) alert('Google sign-in failed: ' + res.error.message);
+  } catch (e) { alert('Google sign-in failed: ' + e.message); }
+});
+document.getElementById('facebookLoginBtn').addEventListener('click', function() { alert('Facebook sign-in coming soon!'); });
+document.getElementById('appleLoginBtn').addEventListener('click', function() { alert('Apple sign-in coming soon!'); });
+(async function boot() {
+  showLoading('Checking session…');
+  await new Promise(function(r) { setTimeout(r, 100); });
+  const sess = readSession();
+  if (!sess || !sess.access_token) {
+    hideLoading(); showAuth();
+    if (location.hash === '#signup') { document.getElementById('loginView').style.display = 'none'; document.getElementById('signupView').style.display = 'block'; }
+    return;
+  }
+  session = sess; user = readUser();
+  try {
+    const v = await fetch('/api/verify?_t=' + Date.now(), { headers: { 'Authorization': 'Bearer ' + sess.access_token }, cache: 'no-store' });
+    if (!v.ok) { logout(); hideLoading(); return; }
+    const vd = await v.json();
+    if (vd.user) { user = vd.user; localStorage.setItem('podiumUser', JSON.stringify(user)); }
+    sites = await fetchSites(2);
+    hideLoading(); showDashboard();
+    await new Promise(function(r) { setTimeout(r, 50); });
+    renderSites();
+  } catch (e) { logout(); hideLoading(); }
+})();
+</script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+

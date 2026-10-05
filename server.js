@@ -441,6 +441,10 @@ app.get('/api/public/site/:id', async (req, res, next) => {
 // STATIC FILES
 // ================================================================
 app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+});
+
+app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
